@@ -1,0 +1,64 @@
+# Add the English-comment filter to a Rime schema.
+#
+# Two ways to use this file.
+#
+# ---------------------------------------------------------------------------
+# A. Patch file (recommended, keeps the upstream schema untouched)
+# ---------------------------------------------------------------------------
+# Save the content below as  <Rime user dir>\<schema>.custom.yaml
+# e.g. for the "五笔·拼音" schema:  wubi_pinyin.custom.yaml
+#
+#   patch:
+#     "engine/filters/+":
+#       - lua_filter@*input_text*filter
+#
+# Then redeploy (WeaselDeployer.exe /deploy, or "Deploy" from the tray menu).
+#
+# ---------------------------------------------------------------------------
+# B. Edit the schema directly
+# ---------------------------------------------------------------------------
+# Add one line to the schema's engine/filters list:
+#
+#   engine:
+#     ...
+#     filters:
+#       - lua_filter@*input_text*filter     <-- add this
+#
+# A minimal working example of the engine section, taken from a Wubi schema:
+#
+#   engine:
+#     processors:
+#       - ascii_composer
+#       - recognizer
+#       - key_binder
+#       - speller
+#       - punctuator
+#       - selector
+#       - navigator
+#       - express_editor
+#     segmentors:
+#       - ascii_segmentor
+#       - matcher
+#       - abc_segmentor
+#       - punct_segmentor
+#       - fallback_segmentor
+#     translators:
+#       - punct_translator
+#       - reverse_lookup_translator
+#       - table_translator
+#     filters:
+#       - lua_filter@*input_text*filter      # <-- rime-en-gloss
+#
+# Notes
+# -----
+# * Only a *filter* is added. Do NOT add a lua_processor: processors see every
+#   key event and a slow one makes the candidate list stop responding.
+# * librime-lua must be available. The Windows Weasel build ships it; on Linux
+#   install librime-lua (or librime >= 1.7 with the lua plugin) and make sure
+#   the "lua" components are enabled.
+# * The plugin file must be named input_text.lua because the filter is
+#   referenced as lua_filter@*input_text*filter.
+
+patch:
+  "engine/filters/+":
+    - lua_filter@*input_text*filter

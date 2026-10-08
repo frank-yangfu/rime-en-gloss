@@ -1,0 +1,30 @@
+# ---- generated / large data (fetch it again instead of committing it) ----
+data/cedict.json
+tools/models/
+*.argosmodel
+*.txt.gz
+.tmp_cache/
+
+# ---- runtime files written next to the table ----
+cache.txt
+cache_extra.txt
+fresh.txt
+request.txt
+heartbeat.txt
+service.log
+filter_debug.log
+filter_review_*.txt
+review/
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- editors / os ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
