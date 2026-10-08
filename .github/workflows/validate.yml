@@ -1,0 +1,57 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python syntax
+        run: python -m py_compile tools/*.py
+
+      - name: Glossary self-test
+        # No data files needed: checks the hand-checked tables and the sense
+        # picker against the bugs found during the quality review.
+        run: python tools/selftest.py
+
+      - name: CLI help still works
+        run: |
+          python tools/build_cache.py --help > /dev/null
+          python tools/fetch_cedict.py --help > /dev/null
+
+      - name: Install lua runtime and check the filter compiles
+        run: |
+          pip install --quiet lupa
+          python - <<'PY'
+          import io, lupa
+          lua = lupa.LuaRuntime()
+          compile_lua = lua.eval(
+              'function(s) local fn, err = load(s);'
+              ' if fn then return true else return err end end')
+          result = compile_lua(io.open("lua/input_text.lua", encoding="utf-8").read())
+          print("lua/input_text.lua:", "OK" if result is True else result)
+          raise SystemExit(0 if result is True else 1)
+          PY
+
+      - name: Batch files stay ASCII-only
+        run: |
+          python - <<'PY'
+          import glob
+          bad = []
+          for path in glob.glob("scripts/*.bat"):
+              data = open(path, "rb").read()
+              if any(b > 127 for b in data):
+                  bad.append(path)
+          print("non-ASCII .bat files:", bad or "none")
+          raise SystemExit(1 if bad else 0)
+          PY

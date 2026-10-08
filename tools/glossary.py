@@ -52,6 +52,64 @@ water way we week well went were west what when where whether which while white 
 wind window with within without woman women word work world would write year yes yet you young your
 """.split())
 
+#: NOTE: this list is deliberately kept to the most frequent English words.
+#: Extending it with rarer nouns (ball, game, phone, ...) was measured to change
+#: ~3% of all glosses, and while some improved (分店 annex -> branch) others
+#: regressed (便便 poo -> obese, 玉髓 chalcedony -> exquisite wine), because a
+#: rarer reading of a character often has the simpler English gloss. Review the
+#: full diff (see docs/quality-review.md) before growing this set.
+
+#: Capitalised words that are still everyday vocabulary for a Chinese speaker
+#: (country, language and script names).  Anything else capitalised is treated
+#: as a proper noun and demoted: CC-CEDICT lists entries such as
+#: "Pisa, town in Toscana, Italy" for 比萨 and "Tom Thumb" for 大拇指, and those
+#: must never win over the literal sense when someone is just typing a word.
+PROPER_NOUN_OK = {
+    "china", "chinese", "japan", "japanese", "english", "britain", "british",
+    "america", "american", "usa", "us", "uk", "taiwan", "tibet", "tibetan",
+    "hong", "kong", "macao", "macau", "beijing", "shanghai", "guangzhou",
+    "europe", "european", "asia", "asian", "africa", "african", "australia",
+    "canada", "russia", "russian", "korea", "korean", "france", "french",
+    "germany", "german", "india", "indian", "italy", "italian", "spain",
+    "spanish", "portugal", "mexico", "brazil", "egypt", "turkey", "iran",
+    "iraq", "israel", "thailand", "vietnam", "singapore", "malaysia",
+    "buddhism", "buddhist", "christian", "christianity", "muslim", "islam",
+    "islamic", "hindu", "taoism", "taoist", "confucian", "confucianism",
+    "god", "christmas", "internet", "i",
+}
+
+
+#: Phrases that describe a place, dynasty or person rather than a meaning.
+#: They are demoted, not dropped: if such a sense is the only one available it
+#: is still better than showing no English at all (唐朝 -> "Tang dynasty").
+PROPER_PHRASES = (
+    "name of ", "ancient state", "vassal state", "state in ", "state of ",
+    "county in ", "county of ", "town in ", "city in ", "district in ",
+    "province", "dynasty", "historical figure", "island in ", "island of ",
+    "former name", "old name", "see ", "also called ", "abbr. for ", "surname",
+    "given name", "personal name", "place name", "river in ", "mountain in ",
+)
+
+
+def _proper_penalty(gloss):
+    """Demote senses that name a place, dynasty, person or brand.
+
+    CC-CEDICT merges several meanings per word, and the proper-noun one is often
+    the wordiest ("Pisa, town in Toscana, Italy" for 比萨, "name of an ancient
+    state" for 密).  Without this the picker would happily show those to someone
+    who is simply typing an everyday word.
+    """
+    penalty = 0.0
+    for token in re.findall(r"[A-Za-z][A-Za-z']+", gloss):
+        if token[0].isupper() and token.lower() not in PROPER_NOUN_OK:
+            penalty += 0.35
+    low = gloss.lower()
+    for phrase in PROPER_PHRASES:
+        if phrase in low:
+            penalty += 0.4
+    return penalty
+
+
 #: Words that signal a sense aimed at readers, not typists.
 BAD_DEF = (
     "radical", "variant of", "old variant", "see also", "used in", "surname ",
@@ -95,7 +153,7 @@ def _score(gloss):
     hits = sum(1 for t in tokens if t in COMMON_EN)
     coverage = hits / len(tokens)
     length_penalty = 0.02 * len(tokens)
-    return coverage - length_penalty
+    return coverage - length_penalty - _proper_penalty(gloss)
 
 
 _VARIANT_RE = re.compile(r"variant of\s+([^\[]+)")
@@ -125,8 +183,14 @@ def best_gloss(word, table, _depth=0):
     candidates = []
     for raw in defs:
         text = raw.strip()
-        if text.lower().startswith("variant of") and _depth < 3:
+        if text.lower().startswith("variant of"):
             for target in _variant_targets(text):
+                if target == word:
+                    # self-reference, e.g. 妙 -> "variant of 妙[miao4]":
+                    # following it would recurse forever and lose the real sense
+                    continue
+                if _depth >= 3:
+                    continue
                 found = best_gloss(target, table, _depth + 1)
                 if found:
                     return found
@@ -2580,12 +2644,70 @@ WORD.update({
 })
 
 
+WORD.update({
+    "塔": "tower; pagoda",
+    "甚": "very; extremely",
+    "采": "to pick; to collect",
+    "便便": "poo; poop",
+    "佃": "to rent land",
+    "贲": "energetic; bright",
+    "泷": "rapids",
+    "利害": "pros and cons; advantages and disadvantages",
+    "中试": "pilot test",
+    "踅": "to walk around",
+    "挨肩儿": "children close in age",
+    "上色": "top-grade"
+})
+
+
+SINGLE.update({
+    "密": "dense; secret; close",
+    "唐朝": "Tang dynasty",
+    "宋朝": "Song dynasty",
+    "明朝": "Ming dynasty",
+    "清朝": "Qing dynasty",
+    "汉朝": "Han dynasty",
+    "元朝": "Yuan dynasty",
+    "秦朝": "Qin dynasty",
+    "隋朝": "Sui dynasty",
+    "周朝": "Zhou dynasty",
+    "唐代": "Tang dynasty",
+    "宋代": "Song dynasty",
+    "明代": "Ming dynasty",
+    "清代": "Qing dynasty",
+    "汉代": "Han dynasty",
+    "铤": "ingot",
+    "台子": "table; stand",
+    "姥": "grandma"
+})
+
+
+WORD.update({
+    "官话": "Mandarin (official language)",
+    "用钱": "to spend money",
+    "脯": "dried meat; preserved fruit",
+    "隽": "meaningful; profound",
+    "龙猫": "Totoro; chinchilla",
+    "馏": "to steam; to distill",
+    "戚戚": "sorrowful",
+    "吭": "throat; to utter",
+    "朝鲜": "Korea (geographic term)",
+    "走乡随乡": "When in Rome, do as the Romans do"
+})
+
+
 def refine_char(ch, gloss):
-    """Final say for a single character."""
+    """Final say for a single character.
+
+    WORD is consulted as well as SINGLE: it is easy to add an entry to the
+    wrong table, and silently ignoring it is a nasty trap.
+    """
     if ch in DROP:
         return None
     if ch in SINGLE:
         return SINGLE[ch]
+    if ch in WORD:
+        return WORD[ch]
     if ch in _LEGACY:
         return _LEGACY[ch]
     if gloss is None:

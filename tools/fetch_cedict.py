@@ -28,8 +28,23 @@ LINE_RE = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]*)\]\s+/(.+)/\s*$")
 
 
 def parse(lines):
-    """-> {word: [definition, ...]}, keyed by both simplified and traditional."""
+    """-> {word: [definition, ...]}, keyed by both simplified and traditional.
+
+    All definitions of a key are merged (never overwritten) because CC-CEDICT
+    splits one word over several entries and the file order is not "most common
+    sense first": 大拇指 has both "thumb" and "Tom Thumb", 比萨 both "pizza" and
+    "Pisa".  Order is preserved and duplicates are dropped; picking the sense a
+    typist wants is then the job of glossary.best_gloss (common-English word
+    coverage plus a proper-noun penalty).
+    """
     table = {}
+
+    def add(word, parts):
+        bucket = table.setdefault(word, [])
+        for part in parts:
+            if part not in bucket:
+                bucket.append(part)
+
     for raw in lines:
         if raw.startswith("#"):
             continue
@@ -40,9 +55,9 @@ def parse(lines):
         parts = [d.strip() for d in defs.split("/") if d.strip()]
         if not parts:
             continue
-        table[simplified] = parts
+        add(simplified, parts)
         if traditional != simplified:
-            table.setdefault(traditional, parts)
+            add(traditional, parts)
     return table
 
 

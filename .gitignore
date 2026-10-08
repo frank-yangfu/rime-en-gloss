@@ -4,6 +4,7 @@ tools/models/
 *.argosmodel
 *.txt.gz
 .tmp_cache/
+dist/
 
 # ---- runtime files written next to the table ----
 cache.txt

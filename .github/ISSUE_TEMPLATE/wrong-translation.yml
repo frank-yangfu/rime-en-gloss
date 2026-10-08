@@ -1,0 +1,52 @@
+name: 译义纠错 / Wrong translation
+description: 某个词的英文不对或缺失，提交给校准表修正
+title: "[译义] "
+labels: ["translation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢校对！填三个字段就够了，我会把它加进 `tools/glossary.py` 的人工校准表，改一次永久生效。
+
+  - type: input
+    id: word
+    attributes:
+      label: 词
+      description: 你打的字/词
+      placeholder: 告诉
+    validations:
+      required: true
+
+  - type: input
+    id: current
+    attributes:
+      label: 现在显示的英文
+      placeholder: to press charges
+    validations:
+      required: true
+
+  - type: input
+    id: expected
+    attributes:
+      label: 建议改成
+      placeholder: to tell; to inform
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 依据（可选）
+      description: 词典出处、例句、截图链接都可以
+      placeholder: 输入法里打 "wjjg" 时显示的是 "to press charges"
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / 词表条目数
+      description: 见 Releases 页面，或 `%TEMP%\rime_argos\cache.txt` 的行数
+      placeholder: v1.0.0 / 96,784 条
+    validations:
+      required: false

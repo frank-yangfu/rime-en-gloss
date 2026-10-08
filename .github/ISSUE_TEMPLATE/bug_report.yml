@@ -1,0 +1,73 @@
+name: 问题反馈 / Bug report
+description: 没显示英文、卡顿、打不出字等
+title: "[问题] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先看 [排障文档](../../blob/main/docs/troubleshooting.md)，90% 的情况能自己定位。
+        如果有 `filter_debug.log`（设置环境变量 `RIME_EN_GLOSS_DEBUG=1` 后打字生成），贴上来最快。
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: 现象
+      options:
+        - 完全没有英文
+        - 只有少数词有英文
+        - 打字卡顿 / 宿主程序卡死
+        - 打不出汉字了
+        - 英文位置或格式不对
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 系统
+      placeholder: Windows 11 23H2
+    validations:
+      required: true
+
+  - type: input
+    id: frontend
+    attributes:
+      label: Rime 前端与版本
+      description: 小狼毫 / 鼠须管 / ibus-rime / fcitx5-rime 及版本号
+      placeholder: 小狼毫 0.17.4
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 切换到「五笔·拼音」
+        2. 输入 fg
+        3. 候选右侧没有英文
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图
+      description: |
+        `%TEMP%\rime_argos\filter_debug.log`（需先设 RIME_EN_GLOSS_DEBUG=1）
+        `%LOCALAPPDATA%\Temp\rime.weasel\*.ERROR.*.log`（小狼毫运行时报错）
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 自查
+      options:
+        - label: 方案里只加了 `lua_filter@*input_text*filter`，没有加 `lua_processor`
+          required: false
+        - label: `%TEMP%\rime_argos\cache.txt` 存在且有几万行
+          required: false

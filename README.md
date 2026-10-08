@@ -1,5 +1,13 @@
 # rime-en-gloss
 
+[![Release](https://img.shields.io/github/v/release/frank-yangfu/rime-en-gloss?sort=semver&color=green)](https://github.com/frank-yangfu/rime-en-gloss/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#快速开始)
+[![Rime](https://img.shields.io/badge/Rime-Weasel%20%7C%20Squirrel%20%7C%20ibus--rime%20%7C%20fcitx5-informational)](#快速开始)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-success)](#工作原理)
+[![Table](https://img.shields.io/badge/table-96k%20entries-orange)](docs/quality-review.md)
+[![Stars](https://img.shields.io/github/stars/frank-yangfu/rime-en-gloss?style=flat)](https://github.com/frank-yangfu/rime-en-gloss/stargazers)
+
 > 在 Rime（小狼毫 / 鼠须管 / ibus-rime / fcitx5-rime）的**候选栏里实时显示英文**：输入中文，候选右侧就带上对应的英文释义。
 
 ![候选栏里的英文注释：输入 fg，候选显示 二 fg, two / 十 ~h, ten / 博 ~e, broad; extensive](docs/images/candidate-english.png)
@@ -89,6 +97,9 @@ python build_cache.py                        # 生成 cache.txt（约 10 万条�
 
 `build_cache.py` 只依赖 Python 标准库。输出的词表默认写到 `%TEMP%/rime_argos/cache.txt`（Linux/macOS 同理），可用 `--out` 指定。
 
+> **不想自己构建？** 直接下载 [Releases](https://github.com/frank-yangfu/rime-en-gloss/releases) 里预生成的 `cache.txt`（96,784 条，附 MD5），放进 mailbox 目录即可。
+> Linux / macOS 用户建议显式指定 `RIME_EN_GLOSS_DIR`（默认目录在 Linux 下是 `$TMPDIR/rime_argos`，缺省回落 `/tmp/rime_argos`）。
+
 ## 工作原理
 
 ```
@@ -98,7 +109,7 @@ python build_cache.py                        # 生成 cache.txt（约 10 万条�
      ┌──────────────────────────────────────────┐
      │ tools/glossary.py   释义挑选 + 人工校准  │
      │  · 解析 "variant of 繁體" 链             │
-     │  · 用 ~600 个常用英语词给每个义项打分    │
+     │  · 用 ~420 个最常用英语词给义项打分      │
      │  · 1,500 条单字 / 600 条词组 人工校对    │
      └──────────────────────────────────────────┘
                           │
@@ -141,6 +152,7 @@ python build_cache.py                        # 生成 cache.txt（约 10 万条�
 2. **3,000+ 条 `variant of 繁體` 空壳条目** → 自动跳到本体词条取释义（否则 联系 / 发布 / 这里 会取不到值）。
 3. **单字义项偏文言 / 部首** → 逐条人工审查前 1,200 高频字，校准 1,500+ 条（语气词、虚词、姓氏、量词都给说明式释义）。
 4. **噪音条目**（部首说明、交叉引用、拉丁学名、截断残句、繁体单字）→ 一律不收录。
+5. **专有名词义项抢占** → 同一个词在词典里有多个词条，专有名词那条往往英语更简单（比萨 会变成 "Pisa"，大拇指 变成 "Tom Thumb"，密 变成 "name of an ancient state"）；现在按「大写词数 + 地名/朝代短语」降权，日常义优先。
 
 **刻意不做的事**：不用机器翻译模型生成条目。早期版本用它补词，结果是 `人不 → No, no, no`、`一大 → A big one`、`就能 → Yeah`；这些现在全部被剔除，模型只允许处理 **3 字以上**的词，而且要过一层句式过滤。
 
@@ -208,6 +220,14 @@ rime-en-gloss/
 ```
 
 ## 参与开发
+
+先跑一遍自检，它把审查期间发现过的 bug 都固化成了断言（不需要任何数据文件）：
+
+```bash
+python tools/selftest.py
+```
+
+CI（`.github/workflows/validate.yml`）会跑：Python 语法、自检、lua 编译、`.bat` 纯 ASCII 检查。
 
 最需要的贡献是**校对译义**：
 

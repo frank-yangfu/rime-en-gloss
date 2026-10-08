@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安装 / 排障文档
+    url: https://github.com/frank-yangfu/rime-en-gloss/blob/main/docs/troubleshooting.md
+    about: 没显示英文、卡顿、打不出字——先看这里，90% 的问题能自己定位
+  - name: 译义质量与数据来源
+    url: https://github.com/frank-yangfu/rime-en-gloss/blob/main/docs/quality-review.md
+    about: 译义是怎么挑的、哪些地方刻意不放英文

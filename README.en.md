@@ -1,5 +1,12 @@
 # rime-en-gloss
 
+[![Release](https://img.shields.io/github/v/release/frank-yangfu/rime-en-gloss?sort=semver&color=green)](https://github.com/frank-yangfu/rime-en-gloss/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#install-manual-any-platform)
+[![Rime](https://img.shields.io/badge/Rime-Weasel%20%7C%20Squirrel%20%7C%20ibus--rime%20%7C%20fcitx5-informational)](#install-manual-any-platform)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-success)](#how-it-works)
+[![Table](https://img.shields.io/badge/table-96k%20entries-orange)](docs/quality-review.md)
+
 > Show the **English meaning of every Chinese candidate** in the Rime candidate
 > window (Weasel / Squirrel / ibus-rime / fcitx5-rime). Offline, no API key, no
 > noticeable typing lag.
@@ -36,7 +43,7 @@ cp lua/input_text.lua <rime user dir>/lua/
 # 2) the table
 cd tools
 python fetch_cedict.py        # CC-CEDICT ~200k entries -> ../data/cedict.json
-python build_cache.py        # -> $TMPDIR/rime_argos/cache.txt (~96k entries)
+python build_cache.py        # -> $TMPDIR/rime_argos/cache.txt (96,784 entries)
 #    add --dict-dir <rime user dir> to use the dictionary's real word weights
 #    for ordering, and --out to write somewhere else
 
@@ -76,12 +83,14 @@ per keystroke. See `docs/how-it-works.md`.
 | 一次 | first | once; one time |
 | 刘 | a type of battle-ax | (surname Liu) |
 
-Achieved by: resolving `variant of` chains, scoring every candidate sense with a
-common-English word list, 1,500+ hand-checked character overrides, and dropping
-dictionary noise (radicals, cross-references, Latin names, traditional-only
-characters). Machine translation is deliberately **not** used to generate
-entries — it produced things like `人不 → No, no, no`. See
-`docs/quality-review.md`.
+Achieved by: merging all dictionary entries of a word (CC-CEDICT splits one word
+over several entries and the file order is not "most common sense first"),
+resolving `variant of` chains including self-references, scoring every candidate
+sense against a common-English word list, demoting proper-noun senses (otherwise
+比萨 becomes "Pisa" and 大拇指 "Tom Thumb"), 1,700+ hand-checked overrides, and
+dropping dictionary noise. Machine translation is deliberately **not** used to
+generate entries — it produced things like `人不 → No, no, no`, `就能 → Yeah`.
+See `docs/quality-review.md`.
 
 ## Layout
 

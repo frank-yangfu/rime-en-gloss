@@ -26,7 +26,8 @@ program, so:
   * launching the optional helper service from here is deliberately NOT done:
     exec() inside the input thread is what made WeChat / Word freeze
 
-Files (in the mailbox directory, default %TEMP%\rime_argos, override with the
+Files (in the mailbox directory: %TEMP%\rime_argos on Windows,
+$TMPDIR/rime_argos or /tmp/rime_argos elsewhere; override with the
 RIME_EN_GLOSS_DIR environment variable):
 
     cache.txt         main table: "中文<TAB>English" per line (read-only for lua)
@@ -42,14 +43,18 @@ Install: copy this file into <Rime user dir>\lua\ and add
 to the schema's engine/filters list, then redeploy Rime.
 ]]
 
+-- Forward slashes work on Windows too and keep the path portable across
+-- platforms; the temp directory name differs (%TEMP% on Windows, $TMPDIR or
+-- /tmp elsewhere), so all of them are tried.
 local MAILBOX = os.getenv("RIME_EN_GLOSS_DIR")
 if not MAILBOX or MAILBOX == "" then
-    MAILBOX = (os.getenv("TEMP") or ".") .. "\\rime_argos"
+    local base = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP") or "/tmp"
+    MAILBOX = base .. "/rime_argos"
 end
-local CACHE_FILE = MAILBOX .. "\\cache.txt"
-local FRESH_FILE = MAILBOX .. "\\fresh.txt"
-local REQ_FILE = MAILBOX .. "\\request.txt"
-local HEARTBEAT_FILE = MAILBOX .. "\\heartbeat.txt"
+local CACHE_FILE = MAILBOX .. "/cache.txt"
+local FRESH_FILE = MAILBOX .. "/fresh.txt"
+local REQ_FILE = MAILBOX .. "/request.txt"
+local HEARTBEAT_FILE = MAILBOX .. "/heartbeat.txt"
 
 local DEBUG = (os.getenv("RIME_EN_GLOSS_DEBUG") == "1")
 
@@ -72,7 +77,7 @@ local function log_debug(msg)
     if not DEBUG then
         return
     end
-    local f = io.open(MAILBOX .. "\\filter_debug.log", "a")
+    local f = io.open(MAILBOX .. "/filter_debug.log", "a")
     if f then
         f:write(os.date("%Y-%m-%d %H:%M:%S ") .. msg .. "\n")
         f:close()
