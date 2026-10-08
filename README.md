@@ -216,7 +216,9 @@ rime-en-gloss/
 └── docs/
     ├── how-it-works.md           # 性能与不卡顿的设计取舍
     ├── quality-review.md         # 译义质量审查记录
-    └── troubleshooting.md        # 排障
+    ├── troubleshooting.md        # 排障
+    └── releases/
+        └── v1.0.0.md             # 各版本发布说明（离线可查）
 ```
 
 ## 参与开发

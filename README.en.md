@@ -103,6 +103,7 @@ tools/optional_mt_server.py optional offline model service (long-tail words)
 schema/add_filter.patch.yaml how to attach the filter
 scripts/                    Windows installer & service launchers
 docs/                       design notes, quality review, troubleshooting
+docs/releases/v1.0.0.md     release notes, offline
 ```
 
 ## Author
