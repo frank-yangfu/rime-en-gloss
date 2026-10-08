@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rime-en-gloss — 在 Rime 候选栏显示英文释义</title>
+<meta name="description" content="Rime 输入法（小狼毫/鼠须管/ibus-rime/fcitx5-rime）候选栏实时显示英文释义，纯离线、零密钥、不卡输入法。">
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f7f8fa; --ink:#111827; --sub:#5b6472; --line:#e6e8ec;
+    --accent:#2563eb; --accent-soft:#eff6ff; --green:#0f7b3f; --red:#d92d20;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.65;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:0 22px}
+  header{padding:70px 0 38px;text-align:center}
+  h1{font-size:38px;line-height:1.2;margin:0 0 14px;letter-spacing:-.5px}
+  .tagline{font-size:17px;color:var(--sub);max-width:620px;margin:0 auto 26px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:10px 20px;border-radius:9px;text-decoration:none;
+       font-size:14.5px;font-weight:600;border:1px solid transparent;transition:.15s}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:#1d4ed8}
+  .btn-ghost{border-color:var(--line);color:var(--ink);background:#fff}
+  .btn-ghost:hover{background:var(--panel)}
+  section{padding:44px 0;border-top:1px solid var(--line)}
+  h2{font-size:22px;margin:0 0 18px;letter-spacing:-.2px}
+  h3{font-size:15.5px;margin:22px 0 8px}
+  p{margin:0 0 12px}
+  .muted{color:var(--sub)}
+  .shot{text-align:center;margin:6px 0 0}
+  .shot img{max-width:100%;width:430px;border-radius:12px;border:1px solid var(--line);
+            box-shadow:0 10px 30px rgba(17,24,39,.08)}
+  pre{background:#0f172a;color:#e5e7eb;padding:16px 18px;border-radius:11px;overflow:auto;
+      font-size:13px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+  pre .c{color:#94a3b8}
+  code{background:var(--panel);border:1px solid var(--line);padding:1px 6px;border-radius:5px;
+       font-size:13px;font-family:ui-monospace,Consolas,monospace}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .card b{display:block;margin-bottom:5px;font-size:15px}
+  .card span{color:var(--sub);font-size:14px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line)}
+  th{font-size:12.5px;color:var(--sub);font-weight:600;background:var(--panel)}
+  td.bad{color:var(--red)}
+  td.good{color:var(--green)}
+  footer{padding:34px 0 60px;border-top:1px solid var(--line);color:var(--sub);font-size:13.5px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <h1>rime-en-gloss</h1>
+  <p class="tagline">
+    在 Rime 输入法（小狼毫 / 鼠须管 / ibus-rime / fcitx5-rime）的候选栏里
+    <strong>实时显示英文释义</strong>。纯离线，不需要 API key，打字不卡。
+  </p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/frank-yangfu/rime-en-gloss">查看 GitHub</a>
+    <a class="btn btn-ghost" href="https://github.com/frank-yangfu/rime-en-gloss/releases">下载词表 v1.0.0</a>
+  </div>
+</header>
+
+<div class="wrap shot">
+  <img src="images/candidate-english.png"
+       alt="候选栏效果：输入 fg，候选右侧显示 二 fg, two / 十 ~h, ten / 博 ~e, broad; extensive">
+  <p class="muted" style="font-size:13.5px;margin-top:12px">
+    英文在候选的注释槽里 —— 按空格上屏的永远是中文，不会误选英文
+  </p>
+</div>
+
+<section class="wrap">
+  <h2>三行装好</h2>
+<pre><span class="c"># 1) 插件（Rime 用户目录：小狼毫 %APPDATA%\Rime，鼠须管 ~/Library/Rime）</span>
+cp lua/input_text.lua  &lt;Rime 用户目录&gt;/lua/
+
+<span class="c"># 2) 词表：自己构建，或直接下载 Release 里预生成的 cache.txt</span>
+python tools/fetch_cedict.py &amp;&amp; python tools/build_cache.py
+
+<span class="c"># 3) 挂到方案：存成 &lt;方案&gt;.custom.yaml，然后重新部署 Rime</span>
+patch:
+  "engine/filters/+":
+    - lua_filter@*input_text*filter</pre>
+  <p class="muted">Windows 上也可以直接跑 <code>scripts\install.ps1</code>，它会自动完成上面三步。</p>
+</section>
+
+<section class="wrap">
+  <h2>为什么是它</h2>
+  <div class="grid">
+    <div class="card"><b>纯离线</b><span>数据来自 CC-CEDICT + 人工校准表，不联网、不用密钥、不依赖任何翻译服务。</span></div>
+    <div class="card"><b>不抢你的选词</b><span>只挂 <code>filter</code>，英文写在注释槽；空格上屏的永远是中文。</span></div>
+    <div class="card"><b>不卡宿主程序</b><span>只在缓存未命中时读盘、单次解析 ≤4 万行、只处理前 30 个候选，绝不在输入线程里起进程。</span></div>
+    <div class="card"><b>格式统一</b><span>每一行都是 <code>编码, 英文</code>；单字没有编码时用你正在输入的编码兜底。</span></div>
+    <div class="card"><b>96,784 条</b><span>单字 6,123、双字 55,591、三/四字 35,070，连打 3 个字即全部载入内存。</span></div>
+    <div class="card"><b>可校对、可回退</b><span>人工校准表就在 <code>tools/glossary.py</code>，改一行重跑构建即可；自检脚本防回退。</span></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>译义质量</h2>
+  <p class="muted">直接取词典首条释义会得到下面这些结果。这一版经过两轮全量审查，把这些问题都修掉了：</p>
+  <table>
+    <tr><th>词</th><th>直接取词典</th><th>rime-en-gloss</th></tr>
+    <tr><td>打</td><td class="bad">dozen（一打）</td><td class="good">to hit; to play</td></tr>
+    <tr><td>告诉</td><td class="bad">to press charges（起诉）</td><td class="good">to tell; to inform</td></tr>
+    <tr><td>东西</td><td class="bad">east and west</td><td class="good">thing; stuff</td></tr>
+    <tr><td>一次</td><td class="bad">first</td><td class="good">once; one time</td></tr>
+    <tr><td>比萨</td><td class="bad">Pisa, town in Toscana, Italy</td><td class="good">pizza</td></tr>
+    <tr><td>大拇指</td><td class="bad">Tom Thumb</td><td class="good">thumb</td></tr>
+    <tr><td>妙</td><td class="bad">（原为空壳词条，没有英文）</td><td class="good">clever</td></tr>
+    <tr><td>台风</td><td class="bad">stage presence, poise</td><td class="good">typhoon</td></tr>
+  </table>
+  <p class="muted" style="margin-top:14px">
+    机器翻译被刻意排除在数据生成之外（它产出过 <code>人不 → No, no, no</code>、<code>就能 → Yeah</code>）。
+    完整记录见 <a href="https://github.com/frank-yangfu/rime-en-gloss/blob/main/docs/quality-review.md">质量审查文档</a>。
+  </p>
+</section>
+
+<footer class="wrap">
+  <p>
+    作者 <a href="https://github.com/frank-yangfu">Frank</a> ·
+    <a href="https://github.com/frank-yangfu/rime-en-gloss">源码</a> ·
+    <a href="https://github.com/frank-yangfu/rime-en-gloss/blob/main/docs/troubleshooting.md">排障</a> ·
+    <a href="https://github.com/frank-yangfu/rime-en-gloss/issues/new/choose">反馈译义</a>
+  </p>
+  <p>代码 MIT；词表数据 CC-CEDICT（CC BY-SA 4.0）派生。</p>
+</footer>
+
+</body>
+</html>
