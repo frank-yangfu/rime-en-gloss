@@ -2,7 +2,7 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.1.0] - 2026-10-10
 
 ### 修复
 
@@ -17,6 +17,9 @@
   组句被破坏）。已用真实 Lua 运行时（lupa）模拟多段组合验证：
   选「李」后编辑器内保留 `nfei` 继续组句，旧实现则清空全部编码。
   `tools/selftest.py` 新增对应回归断言。
+- **输入体验**：`default.custom.yaml` 示例新增 Shift 直接上屏原始输入
+  （`ascii_composer/switch_key/Shift_L: commit_code`），打英文时按 Shift 即上屏，
+  不必再按回车（连按回车容易把消息直接发送出去）。
 
 ## [1.0.0] - 2026-10-08
 

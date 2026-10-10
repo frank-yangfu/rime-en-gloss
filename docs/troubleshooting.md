@@ -112,3 +112,33 @@ WORD   = {"东西": "thing; stuff", ...}     # 词组
 - 用户目录：Linux `~/.config/ibus/rime`（fcitx5 为 `~/.local/share/fcitx5/rime`），macOS `~/Library/Rime`。
 - 重新部署：Linux `ibus-daemon -drx` 或 fcitx5 的「重新部署」；macOS 鼠须管菜单里的「重新部署」。
 - `build_cache.py --dict-dir <用户目录>` 才能读到词频权重。
+
+## 打人名（如 杨满钊）第一次出来的不是这个名字
+
+这是词库权重问题，不是 bug：人名用的字往往与常用字同码
+（例：wubi86 里 `qjh` 同时对应 刈(600万) 和 钊(351万)，刈 更常用所以排前面）。
+第一次打出错误候选后**选一次正确的字**，用户词库会记住，之后就对了。
+
+想让某个高频人名**第一次就对**，建一个扩展词库（不动基础词表）：
+
+```yaml
+# wubi86.extended.dict.yaml
+---
+name: wubi86.extended
+version: "0.1"
+sort: by_weight
+import_tables:
+  - wubi86
+...
+杨满钊	sniagwqjh	50000000   # 实际敲的整串编码
+杨满钊	siqj	50000000           # 标准三字词编码 AaBaCaCb
+```
+
+再在方案补丁里把词典指过去（`<schema>.custom.yaml`）：
+
+```yaml
+patch:
+  translator/dictionary: wubi86.extended
+```
+
+重新部署后，整串编码会直接出整个人名。
