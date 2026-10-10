@@ -214,9 +214,16 @@ end
 -- Single characters carry no comment of their own, so fall back to the code the
 -- user is currently typing and every row looks the same.
 --
--- Note: reading cand.start / cand.end is unreliable in librime-lua (end comes
--- back nil), so the input range is built from the code length.  This is the
--- construction that was verified to work in practice.
+-- IMPORTANT: the candidate's input range (start/end) must survive untouched.
+-- A multi-segment composition -- pinyin "lilinfei" (li|lin|fei) or a wubi
+-- sentence -- produces candidates that each cover only PART of the input.
+-- Recreating them with a hand-built range (Candidate("table", 0, #code, ...))
+-- marks every candidate as covering the whole input, so selecting the first
+-- character commits it alone and silently swallows the rest of the code
+-- (typing a name like 李林菲 left only 李 on the screen). ShadowCandidate
+-- wraps the original candidate, keeps its range and only replaces the comment.
+-- If it is unavailable we keep the original candidate unmodified: a missing
+-- English hint is far better than a broken composition.
 local function with_comment(cand, extra, code)
     local orig = cand["comment"] or ""
     if orig == "" then
@@ -229,12 +236,12 @@ local function with_comment(cand, extra, code)
         merged = extra
     end
     local ok, new_cand = pcall(function()
-        return Candidate("table", 0, #(code or ""), cand["text"], merged)
+        return ShadowCandidate(cand, cand["type"] or "table", cand["text"], merged)
     end)
     if ok and new_cand then
         return new_cand
     end
-    log_debug("with_comment failed: " .. tostring(cand["text"]))
+    log_debug("shadow_candidate unavailable, keep original: " .. tostring(cand["text"]))
     return cand
 end
 

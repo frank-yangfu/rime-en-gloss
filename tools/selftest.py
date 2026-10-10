@@ -88,6 +88,25 @@ def main():
     for ch in ("後", "於", "徵"):
         check("drop " + ch, glossary.refine_char(ch, "???", ), None)
 
+    print("-- candidate range preservation (name-typing regression) --")
+    # Regression: rebuilding candidates with Candidate("table", 0, #code, ...)
+    # marked every candidate as covering the whole input, so composing a name
+    # like 李林菲 (lilinfei) and picking 李 swallowed the rest of the code.
+    # The fix wraps candidates in ShadowCandidate, which must preserve each
+    # candidate's own input range. The lua source is checked textually because
+    # CI has no librime-lua runtime; the semantics were verified against a
+    # real Lua (lupa) simulation of a multi-segment composition.
+    lua_path = os.path.join(HERE, "..", "lua", "input_text.lua")
+    with open(lua_path, encoding="utf-8") as f:
+        lua_src = f.read()
+    # ignore the explanatory comment block: only real code must not hand-build
+    code_only = "\n".join(l for l in lua_src.splitlines()
+                          if not l.lstrip().startswith("--"))
+    check("filter wraps candidates with ShadowCandidate",
+          "ShadowCandidate(cand" in code_only, True)
+    check("filter does not hand-build candidate ranges",
+          'Candidate("table", 0' not in code_only, True)
+
     print("-- table sizes --")
     print("   SINGLE %d | WORD %d | COLLOQUIAL %d | LEGACY %d"
           % (len(glossary.SINGLE), len(glossary.WORD),
