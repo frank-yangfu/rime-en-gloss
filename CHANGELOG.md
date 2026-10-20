@@ -2,6 +2,46 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-10-20
+
+### 修复
+
+- **英文注释中的俚语义项抢占常用义**（选义算法缺陷）：
+  `草 -> to fuck`、`巨龙 -> big dick`、`鸡年 -> Year of the Cock`、`公鸡 -> cock; rooster`、
+  `滚开 -> ...fuck off`、`杂种 -> son of a bitch`、`种禽 -> cock`、`杨 -> alder tree`。
+  这些俚语义项**又短又由常用词构成**，`_score()` 反而给高分。
+  新增 `VULGAR_DEF` 俚语词表 + `_vulgar_penalty()` 降权（**降权不删除**，
+  词本义就是俚语的仍保留原义）。实测：草 -> grass、巨龙 -> giant dragon、
+  杂种 -> hybrid、滚开 -> get out; go away、杨 -> poplar; surname。
+  另补人工校准（SINGLE/WORD 表）。
+- **超长释义被整条丢弃**：`best_gloss` 对 >40 字符且**无分号**的释义直接丢弃，
+  导致知名词条取不到英文：`一带一路`（释义 90 字符）、`中国人民解放军`（85 字符）。
+  改为按逗号取首段 + 词边界兜底。实测：一带一路 -> Belt and Road Initiative、
+  中国人民解放军 -> People's Liberation Army。
+- **候选注释里的粗俗英文改为中性写法**（47 条）：保留 `(vulgar)`/`(derogatory)` 标注，
+  词义仍诚实，但屏幕上不再出现脏字本身。例：傻逼 -> (vulgar) idiot、
+  婊子 -> (vulgar) prostitute、肏 -> (vulgar) to have sex、屁民 -> (derogatory) ordinary people。
+  （石台县 -> Shitai 是安徽真实县名、迪克 -> Dick 是人名、张王李赵 -> any Tom, Dick or Harry
+  是英语习语，均属合理保留，未改。）
+
+### 新增
+
+- `tools/build_pinyin_exp.py`：从 CC-CEDICT 构建扩充拼音词库（145,480 条，≥5 字长词 5,079 条），
+  纯标准库、幂等、写后自检非 NUL。
+- `tools/build_pinyin_simp_merged.py`：三层合并构建（原词库 + CC-CEDICT + 万象拼音），
+  产出 151 万条词库（≥5 字长词 15.9 万条）。
+- 保守剥离法：`自己的 -> oneself`（剥"的"）、`公司的 -> company; firm`。
+  只剥离语义等价的 `的/们/地/得`，不剥 `了/着/过/不/没`（会改变语义）。
+  **放弃**机械拼接单字释义（质量太差：`自己的 -> self + self + of`）——宁可不给，也不给错的。
+
+### 说明
+
+- 英文词表 96,991 -> **111,456 条**；字典序改为**单字优先**（多字词权重原会把单字挤到 7 万位之后，
+  实测 `草` 从第 70,564 位提升到第 439 位）。
+- 词表读取仍保持分批（`MAX_LINES_PER_CALL: 40000`，0.142s）：实测一次读 11 万行需 0.475s，
+  在宿主输入线程中会造成明显卡顿，故不采用。
+- 约 6.5 万条 CC-CEDICT 未收录的口语组合词（如果你/我觉得）仍无英文，属词典边界。
+
 ## [1.1.0] - 2026-10-10
 
 ### 修复

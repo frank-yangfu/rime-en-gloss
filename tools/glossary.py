@@ -110,6 +110,28 @@ def _proper_penalty(gloss):
     return penalty
 
 
+#: Vulgar / slang senses. These are *valid* dictionary meanings, but a sense
+#: like "(slang) big dick" for 巨龙 or "to fuck" for 草 is not what a typist wants
+#: on screen: CC-CEDICT lists them late and _score() would otherwise favour them
+#: because they are short and made of common words. They are heavily demoted
+#: (never deleted -- a genuinely vulgar headword keeps its literal sense).
+VULGAR_DEF = (
+    "fuck", "fucking", "fucked", "cunt", "dick", "shit", "bastard", "whore",
+    "slut", "pussy", "cock", "asshole", "bitch", "schlong", "crap", "boobs",
+    "balls", "screwing", "screw", "make love", "have sex", "blow job",
+    "prostitute", "floozy", "scumbag", "lowlife", "son of a bitch",
+)
+
+
+def _vulgar_penalty(gloss):
+    low = gloss.lower()
+    penalty = 0.0
+    for bad in VULGAR_DEF:
+        if re.search(r"\b" + re.escape(bad) + r"\b", low):
+            penalty += 0.5
+    return penalty
+
+
 #: Words that signal a sense aimed at readers, not typists.
 BAD_DEF = (
     "radical", "variant of", "old variant", "see also", "used in", "surname ",
@@ -153,7 +175,8 @@ def _score(gloss):
     hits = sum(1 for t in tokens if t in COMMON_EN)
     coverage = hits / len(tokens)
     length_penalty = 0.02 * len(tokens)
-    return coverage - length_penalty - _proper_penalty(gloss)
+    return (coverage - length_penalty - _proper_penalty(gloss)
+            - _vulgar_penalty(gloss))
 
 
 _VARIANT_RE = re.compile(r"variant of\s+([^\[]+)")
@@ -208,6 +231,22 @@ def best_gloss(word, table, _depth=0):
             first = c.split(";")[0].strip()
             if 3 <= len(first) <= 40:
                 shortened.append(first)
+                continue
+            # A long definition with no semicolon used to be dropped entirely,
+            # which silently removed well-known terms: 一带一路 -> "Belt and Road
+            # Initiative, Chinese infrastructure and investment strategy
+            # launched in 2013" (90 chars) and 中国人民解放军 -> "People's
+            # Liberation Army, the unified armed forces of the People's Republic
+            # of China" (85 chars). Keep the leading clause up to a comma
+            # instead, so the head noun survives and the gloss stays readable.
+            head = re.split(r",", first)[0].strip()
+            if 3 <= len(head) <= 40:
+                shortened.append(head)
+                continue
+            # last resort: cut on a word boundary
+            cut = first[:40].rpartition(" ")[0].strip()
+            if 3 <= len(cut) <= 40:
+                shortened.append(cut)
             continue
         shortened.append(c)
     candidates = shortened
@@ -232,6 +271,13 @@ def best_gloss(word, table, _depth=0):
 #: Single characters. Written from a full review of the most frequently typed
 #: characters; each one replaces a classical/rare sense with the everyday one.
 SINGLE = {
+    # --- senses the picker gets wrong: slang/proper-noun senses winning ----
+    "草": "grass",                      # was "to fuck" (slang sense won)
+    "巨": "huge; gigantic",             # 巨龙 -> "big dick" otherwise
+    "鸡": "chicken; rooster",           # 鸡年/公鸡 -> "Cock" otherwise
+    "滚": "to roll; to boil",           # 滚开 -> "fuck off" otherwise
+    "银": "silver",                     # 银柳 kept pussy willow, but ok
+    "斗": "to fight; to contend",       # 斗鸡 -> cock fighting
     # --- function words and particles -------------------------------------
     "本": "this; origin; (mw for books)",
     "其": "its; his; that",
@@ -1594,6 +1640,64 @@ SINGLE = _sanitize(SINGLE)
 #: Words (2-4 characters). Filled from a review of the most frequently typed
 #: words; every entry replaces a literal/archaic dictionary sense.
 WORD = {
+    "肏你妈": "(vulgar) an obscene curse",
+    "肏逼": "(vulgar) to have sex",
+    "肏屄": "(vulgar) to have sex",
+    "操屄": "(vulgar) to have sex",
+    "傻屄": "(vulgar) idiot",
+    # --- neutral rewrites: the headword IS vulgar, but the candidate comment
+    # should stay readable (no raw profanity on screen). The definition keeps a
+    # "(vulgar)"/"(derogatory)" tag so the meaning is still honest.
+    "法克": "(loanword) an English expletive",
+    "谢特": "(loanword) an English expletive",
+    "斗鸡": "gamecock fighting (a game fowl contest)",
+    "银柳": "silver willow",
+    "操逼": "(vulgar) to have sex",
+    "烂人": "scoundrel; lowlife",
+    "屁民": "(derogatory) ordinary people",
+    "喷粪": "to talk nonsense",
+    "粪青": "(derogatory) angry youth",
+    "机掰": "(vulgar) contemptible; annoying",
+    "鸡掰": "(vulgar) contemptible; annoying",
+    "阿西吧": "(Korean-derived) an expletive",
+    "狗日的": "(vulgar) damned",
+    "杀千刀": "(vulgar) cursed; damnable",
+    "狗杂种": "(vulgar) bastard",
+    "干你娘": "(vulgar) an obscene curse",
+    "狗杂碎": "(vulgar) scum",
+    "操你妈": "(vulgar) an obscene curse",
+    "娘希匹": "(vulgar, dialect) damned",
+    "龟儿子": "(vulgar) bastard",
+    "龟孙子": "(vulgar) bastard",
+    "圣母婊": "(derogatory) sanctimonious person",
+    "法克鱿": "(loanword) an obscene pun",
+    "杀千刀的": "(vulgar) cursed; scum",
+    "狗娘养的": "(vulgar) bastard",
+    "斗鸡走马": "game fowl fighting and horse racing",
+    "荡妇羞辱": "to shame someone for their sexuality",
+    "操": "(vulgar) to have sex",
+    "你妈": "(vulgar) an obscene curse",
+    "傻逼": "(vulgar) idiot",
+    "鸟人": "(vulgar) contemptible person",
+    "婊子": "(vulgar) prostitute",
+    "拉屎": "to defecate",
+    "王八蛋": "(vulgar) scoundrel",
+    "肏": "(vulgar) to have sex",
+    "贱货": "(vulgar) despicable person",
+    "骚货": "(vulgar) promiscuous person",
+    "迪克": "Dick (personal name)",
+    "荡妇": "(vulgar) promiscuous woman",
+    "P民": "(derogatory) ordinary people",
+    "b7": "(censored English slang)",
+    "傻B": "(vulgar) idiot",
+    # --- senses the picker gets wrong: slang senses winning ---------------
+    "巨龙": "giant dragon",
+    "鸡年": "Year of the Rooster",
+    "公鸡": "rooster",
+    "鸡公": "rooster",
+    "滚开": "get out; go away",
+    "种禽": "breeding poultry",
+    "酉鸡": "Year of the Rooster",
     # --- 2 characters ------------------------------------------------------
     "没有": "to not have; there is no",
     "什么": "what",
