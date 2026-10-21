@@ -43,7 +43,7 @@ local DEBUG = (os.getenv("RIME_EN_GLOSS_DEBUG") == "1")
 
 local MAX_LOOKUP = 6
 local MAX_LEN = 12
-local MIN_CODE_LEN = 2
+local MIN_CODE_LEN = 1
 local PROCESS_LIMIT = 30
 local MAX_LINES_PER_CALL = 40000
 local SERVICE_CHECK_INTERVAL = 300
@@ -376,6 +376,28 @@ local filter = {}
 -- Candidate types that carry no useful result for either mode.
 local DROP_TYPES = { sentence = true, reverse_lookup = true }
 
+-- Candidate types per mode.
+--
+-- librime distinguishes "from the dictionary" from "learned into the user's own
+-- dictionary", and the learned entries have their own types:
+--
+--   table / completion       -- wubi dictionary
+--   user_table               -- wubi entry learned from what the user typed
+--   phrase                   -- pinyin dictionary
+--   user_phrase              -- pinyin entry learned from what the user typed
+--
+-- Missing user_table here was a real bug: once the user had typed 一 by its
+-- short code "g", 一 moved into the user dictionary and became a user_table
+-- candidate, which this filter dropped -- so "g" started showing 开 (a mere
+-- completion) instead of 一.
+local function is_wubi_type(t)
+    return t == "table" or t == "completion" or t == "user_table"
+end
+
+local function is_pinyin_type(t)
+    return t == "phrase" or t == "user_phrase"
+end
+
 function filter.func(input, env)
     local ctx = env.engine.context
     local code = ctx.input or ""
@@ -387,10 +409,10 @@ function filter.func(input, env)
         -- 1) decide the input mode from the candidate types we collected
         local has_table, has_phrase = false, false
         for _i, cand in ipairs(head) do
-            local t = cand["type"]
-            if t == "table" or t == "completion" then
+            local t = cand["type"] or ""
+            if is_wubi_type(t) then
                 has_table = true
-            elseif t == "phrase" then
+            elseif is_pinyin_type(t) then
                 has_phrase = true
             end
         end
@@ -401,13 +423,13 @@ function filter.func(input, env)
         local kept = {}
         for _i, cand in ipairs(head) do
             local t = cand["type"] or ""
-            if t ~= "sentence" and t ~= "reverse_lookup" then
+            if not DROP_TYPES[t] then
                 if mode then
-                    if t == "table" or t == "completion" then
+                    if is_wubi_type(t) then
                         kept[#kept + 1] = cand
                     end
                 else
-                    if t == "phrase" then
+                    if is_pinyin_type(t) then
                         kept[#kept + 1] = cand
                     end
                 end
@@ -481,9 +503,9 @@ function filter.func(input, env)
             return false
         end
         if wubi_mode then
-            return t == "table" or t == "completion"
+            return is_wubi_type(t)
         end
-        return t == "phrase"
+        return is_pinyin_type(t)
     end
 
     for cand in input:iter() do
