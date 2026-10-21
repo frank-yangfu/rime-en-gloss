@@ -1,51 +1,34 @@
 --[[
-rime-en-gloss -- show the English of every Chinese candidate in the comment slot
+input_text.lua -- English glosses in the candidate comment slot.
 
-Result:
+Also keeps wubi and pinyin candidates separate: a wubi code shows only wubi
+candidates, a pinyin spelling shows only pinyin candidates.
 
-    1. 告诉     wjjg, to tell; to inform
-    2. 东西     aiit, thing; stuff
+How the split works
+-------------------
+librime tags every candidate with a *type* that reveals which translator
+produced it:
 
-The English goes into the candidate's *comment* slot (the grey text on the
-right), which keeps selection behaviour untouched: pressing space still commits
-the Chinese word, never the English.
+    table       -- a wubi character/word from the table dictionary
+    completion  -- a wubi prefix completion
+    phrase      -- a pinyin word (script_translator)
+    sentence    -- a whole sentence glued together from several segments
+    reverse_lookup / others -- reverse-lookup noise
+
+The input string decides the mode. A wubi code is 1-4 letters drawn from the
+wubi alphabet and is *not* a sequence of legal pinyin syllables; a pinyin
+spelling is always splittable into syllables from the dictionary.
 
 Design rules that keep the host application responsive
-------------------------------------------------------
+-----------------------------------------------------
 The filter runs synchronously inside the input thread of whatever program you
-are typing into (WeChat, Word, a browser...).  Anything slow here freezes that
-program, so:
-
+are typing into. Anything slow here freezes that program, so:
   * no C modules, no HTTP, no shelling out -- file reads only
-  * the translation table is read incrementally, at most 40k lines per
-    keystroke (~0.1 s measured), so the whole file becomes resident after a few
-    keys while no single keystroke stalls
+  * the translation table is read incrementally, at most 40k lines per keystroke
   * disk access happens only on a cache miss, at most once per second
-  * only the first PROCESS_LIMIT candidates are inspected; the rest are streamed
-    through untouched (a pinyin sentence can produce hundreds of candidates)
-  * launching the optional helper service from here is deliberately NOT done:
-    exec() inside the input thread is what made WeChat / Word freeze
-
-Files (in the mailbox directory: %TEMP%\rime_argos on Windows,
-$TMPDIR/rime_argos or /tmp/rime_argos elsewhere; override with the
-RIME_EN_GLOSS_DIR environment variable):
-
-    cache.txt         main table: "中文<TAB>English" per line (read-only for lua)
-    fresh.txt         small rolling file with the newest translations
-    request.txt       lua -> helper service: words to translate, one per line
-    heartbeat.txt     helper service liveness (unix time); informational only
-    filter_debug.log  written only when RIME_EN_GLOSS_DEBUG=1
-
-Install: copy this file into <Rime user dir>\lua\ and add
-
-    lua_filter@*input_text*filter
-
-to the schema's engine/filters list, then redeploy Rime.
+  * only the first PROCESS_LIMIT candidates are inspected
 ]]
 
--- Forward slashes work on Windows too and keep the path portable across
--- platforms; the temp directory name differs (%TEMP% on Windows, $TMPDIR or
--- /tmp elsewhere), so all of them are tried.
 local MAILBOX = os.getenv("RIME_EN_GLOSS_DIR")
 if not MAILBOX or MAILBOX == "" then
     local base = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP") or "/tmp"
@@ -58,16 +41,176 @@ local HEARTBEAT_FILE = MAILBOX .. "/heartbeat.txt"
 
 local DEBUG = (os.getenv("RIME_EN_GLOSS_DEBUG") == "1")
 
-local MAX_LOOKUP = 6      -- translate at most this many candidates per page
-local MAX_LEN = 12        -- skip long phrases (slow, and useless per keystroke)
-local MIN_CODE_LEN = 1    -- also translate on a single keystroke (cache covers most)
-local PROCESS_LIMIT = 30  -- inspect only the first N candidates; walking the
-                          -- whole list froze the host application
+local MAX_LOOKUP = 6
+local MAX_LEN = 12
+local MIN_CODE_LEN = 2
+local PROCESS_LIMIT = 30
 local MAX_LINES_PER_CALL = 40000
 local SERVICE_CHECK_INTERVAL = 300
 
+-- ---------------------------------------------------------------------------
+-- pinyin syllable table
+-- ---------------------------------------------------------------------------
+-- Built from the dictionary the pinyin translator uses, so it always matches
+-- the syllables librime itself accepts.  A spelling that splits completely
+-- into these syllables is treated as pinyin; anything else is a wubi code.
+local SYLLABLES = {
+    a = true, ai = true, an = true, ang = true, ao = true,
+    ba = true, bai = true, ban = true, bang = true, bao = true, bei = true,
+    ben = true, beng = true, bi = true, bian = true, biao = true, bie = true,
+    bin = true, bing = true, bo = true, bu = true,
+    ca = true, cai = true, can = true, cang = true, cao = true, ce = true,
+    cen = true, ceng = true, cha = true, chai = true, chan = true, chang = true,
+    chao = true, che = true, chen = true, cheng = true, chi = true, chong = true,
+    chou = true, chu = true, chua = true, chuai = true, chuan = true,
+    chuang = true, chui = true, chun = true, chuo = true, ci = true,
+    cong = true, cou = true, cu = true, cuan = true, cui = true, cun = true,
+    cuo = true,
+    da = true, dai = true, dan = true, dang = true, dao = true, de = true,
+    dei = true, deng = true, di = true, dian = true, diao = true, die = true,
+    ding = true, diu = true, dong = true, dou = true, du = true, duan = true,
+    dui = true, dun = true, duo = true,
+    e = true, ei = true, en = true, eng = true, er = true,
+    fa = true, fan = true, fang = true, fei = true, fen = true, feng = true,
+    fo = true, fou = true, fu = true,
+    ga = true, gai = true, gan = true, gang = true, gao = true, ge = true,
+    gei = true, gen = true, geng = true, gong = true, gou = true, gu = true,
+    gua = true, guai = true, guan = true, guang = true, gui = true, gun = true,
+    guo = true,
+    ha = true, hai = true, han = true, hang = true, hao = true, he = true,
+    hei = true, hen = true, heng = true, hong = true, hou = true, hu = true,
+    hua = true, huai = true, huan = true, huang = true, hui = true, hun = true,
+    huo = true,
+    ji = true, jia = true, jian = true, jiang = true, jiao = true, jie = true,
+    jin = true, jing = true, jiong = true, jiu = true, ju = true, juan = true,
+    jue = true, jun = true,
+    ka = true, kai = true, kan = true, kang = true, kao = true, ke = true,
+    ken = true, keng = true, kong = true, kou = true, ku = true, kua = true,
+    kuai = true, kuan = true, kuang = true, kui = true, kun = true, kuo = true,
+    la = true, lai = true, lan = true, lang = true, lao = true, le = true,
+    lei = true, leng = true, li = true, lia = true, lian = true, liang = true,
+    liao = true, lie = true, lin = true, ling = true, liu = true, long = true,
+    lou = true, lu = true, luan = true, lun = true, luo = true, lve = true,
+    ma = true, mai = true, man = true, mang = true, mao = true, me = true,
+    mei = true, men = true, meng = true, mi = true, mian = true, miao = true,
+    mie = true, min = true, ming = true, miu = true, mo = true, mou = true,
+    mu = true,
+    na = true, nai = true, nan = true, nang = true, nao = true, ne = true,
+    nei = true, nen = true, neng = true, ni = true, nian = true, niang = true,
+    niao = true, nie = true, nin = true, ning = true, niu = true, nong = true,
+    nou = true, nu = true, nuan = true, nuo = true, nve = true,
+    o = true, ou = true,
+    pa = true, pai = true, pan = true, pang = true, pao = true, pei = true,
+    pen = true, peng = true, pi = true, pian = true, piao = true, pie = true,
+    pin = true, ping = true, po = true, pou = true, pu = true,
+    qi = true, qia = true, qian = true, qiang = true, qiao = true, qie = true,
+    qin = true, qing = true, qiong = true, qiu = true, qu = true, quan = true,
+    que = true, qun = true,
+    ran = true, rang = true, rao = true, re = true, ren = true, reng = true,
+    ri = true, rong = true, rou = true, ru = true, rua = true, ruan = true,
+    rui = true, run = true, ruo = true,
+    sa = true, sai = true, san = true, sang = true, sao = true, se = true,
+    sen = true, seng = true, sha = true, shai = true, shan = true, shang = true,
+    shao = true, she = true, shen = true, sheng = true, shi = true,
+    shou = true, shu = true, shua = true, shuai = true, shuan = true,
+    shuang = true, shui = true, shun = true, shuo = true, si = true,
+    song = true, sou = true, su = true, suan = true, sui = true, sun = true,
+    suo = true,
+    ta = true, tai = true, tan = true, tang = true, tao = true, te = true,
+    teng = true, ti = true, tian = true, tiao = true, tie = true, ting = true,
+    tong = true, tou = true, tu = true, tuan = true, tui = true, tun = true,
+    tuo = true,
+    wa = true, wai = true, wan = true, wang = true, wei = true, wen = true,
+    weng = true, wo = true, wu = true,
+    xi = true, xia = true, xian = true, xiang = true, xiao = true, xie = true,
+    xin = true, xing = true, xiong = true, xiu = true, xu = true, xuan = true,
+    xue = true, xun = true,
+    ya = true, yan = true, yang = true, yao = true, ye = true, yi = true,
+    yin = true, ying = true, yo = true, yong = true, you = true, yu = true,
+    yuan = true, yue = true, yun = true,
+    za = true, zai = true, zan = true, zang = true, zao = true, ze = true,
+    zei = true, zen = true, zeng = true, zha = true, zhai = true, zhan = true,
+    zhang = true, zhao = true, zhe = true, zhen = true, zheng = true, zhi = true,
+    zhong = true, zhou = true, zhu = true, zhua = true, zhuai = true,
+    zhuan = true, zhuang = true, zhui = true, zhun = true, zhuo = true, zi = true,
+    zong = true, zou = true, zu = true, zuan = true, zui = true, zun = true,
+    zuo = true,
+}
+
+-- Maximum syllable length (chuang / shuang / zhuang are 6).
+local SYLLABLE_MAX = 6
+
+-- Split *input* completely into syllables?  Memoised depth-first search: the
+-- input is at most a dozen letters, so this stays far below a millisecond.
+local function splits_into_pinyin(input)
+    local n = #input
+    if n == 0 then
+        return false
+    end
+    local memo = {}
+    local function walk(i)
+        if i > n then
+            return true
+        end
+        if memo[i] ~= nil then
+            return memo[i]
+        end
+        local longest = math.min(SYLLABLE_MAX, n - i + 1)
+        for len = longest, 1, -1 do
+            if SYLLABLES[input:sub(i, i + len - 1)] and walk(i + len) then
+                memo[i] = true
+                return true
+            end
+        end
+        memo[i] = false
+        return false
+    end
+    return walk(1)
+end
+
+-- Short wubi codes (1-2 letters) collide with pinyin: "a" is a syllable and
+-- "aa"/"an"/"ai" split cleanly, yet they are ordinary wubi level-1 and level-2
+-- short codes.  Treat fewer than three letters as wubi whenever the candidate
+-- set contains table candidates, which is what the table translator produces.
+local SHORT_CODE_LIMIT = 3
+
+-- Decide the input mode.
+--
+--   * a spelling that splits into legal pinyin syllables is pinyin
+--   * a spelling that does not, but produced table candidates, is a wubi code
+--   * anything else (no table candidates and not splittable, e.g. "abc") is
+--     left as pinyin so the pinyin words still show up -- a wubi-only user
+--     typing such a string has no table match anyway
+local function looks_like_wubi(input, has_table_cand, has_phrase_cand)
+    if input == "" then
+        return false
+    end
+    -- The single most reliable signal: a spelling splittable into legal pinyin
+    -- syllables is pinyin.  This is checked first because a wubi code such as
+    -- "wqiy" also happens to produce a few phrase candidates (乌齐雅); those
+    -- must not flip the mode to pinyin and hide the real wubi result 你.
+    if splits_into_pinyin(input) then
+        return false
+    end
+    -- 1-2 letters that do not split cleanly: wubi level-1/level-2 short codes.
+    if #input < SHORT_CODE_LIMIT then
+        return has_table_cand
+    end
+    -- Not a pinyin spelling.  If the table translator matched, this is wubi.
+    if has_table_cand then
+        return true
+    end
+    -- Neither splittable nor a table hit (e.g. "abc"): show pinyin words if
+    -- there are any, otherwise fall back to whatever is there.
+    return not has_phrase_cand
+end
+
+-- ---------------------------------------------------------------------------
+-- English gloss table
+-- ---------------------------------------------------------------------------
+
 local cache = {}
-local cache_offset = 0      -- bytes of cache.txt already parsed
+local cache_offset = 0
 local fresh_size = -1
 local last_request = nil
 local last_service_check = 0
@@ -99,8 +242,6 @@ local function is_chinese(text)
     return code >= 0x4E00 and code <= 0x9FFF
 end
 
--- Incremental reader: parses only the bytes appended since last time, and at
--- most MAX_LINES_PER_CALL lines per call.
 local function load_cache()
     local now = os.time()
     if now == last_cache_read then
@@ -114,7 +255,7 @@ local function load_cache()
     end
     local sz = f:seek("end")
     if sz < cache_offset then
-        cache = {}          -- the file was rewritten: start over
+        cache = {}
         cache_offset = 0
     end
     if sz == cache_offset then
@@ -137,7 +278,7 @@ local function load_cache()
             offset = next_offset
             parsed = parsed + 1
         else
-            break           -- half-written trailing line; pick it up next time
+            break
         end
     end
     cache_offset = offset
@@ -145,9 +286,6 @@ local function load_cache()
     return parsed > 0
 end
 
--- The rolling "newest translations" file, so a word translated a moment ago
--- shows up on the very next keystroke instead of waiting for the incremental
--- reader to walk to the end of a multi-megabyte table.
 local function load_fresh()
     local f = io.open(FRESH_FILE, "rb")
     if not f then
@@ -184,7 +322,6 @@ local function service_alive()
     return (os.time() - ts) < 120
 end
 
--- Informational only: never start a process from here (see the header).
 local function ensure_service()
     local now = os.time()
     if now - last_service_check < SERVICE_CHECK_INTERVAL then
@@ -210,20 +347,9 @@ local function request_translation(texts)
     f:close()
 end
 
--- Rebuild a candidate with a comment, always "code, English".
--- Single characters carry no comment of their own, so fall back to the code the
--- user is currently typing and every row looks the same.
---
--- IMPORTANT: the candidate's input range (start/end) must survive untouched.
--- A multi-segment composition -- pinyin "lilinfei" (li|lin|fei) or a wubi
--- sentence -- produces candidates that each cover only PART of the input.
--- Recreating them with a hand-built range (Candidate("table", 0, #code, ...))
--- marks every candidate as covering the whole input, so selecting the first
--- character commits it alone and silently swallows the rest of the code
--- (typing a name like 李林菲 left only 李 on the screen). ShadowCandidate
--- wraps the original candidate, keeps its range and only replaces the comment.
--- If it is unavailable we keep the original candidate unmodified: a missing
--- English hint is far better than a broken composition.
+-- Rebuild a candidate with a comment, always "code, English".  The candidate's
+-- input range must survive untouched (see the ShadowCandidate note in the
+-- project docs): a hand-built range would break multi-segment compositions.
 local function with_comment(cand, extra, code)
     local orig = cand["comment"] or ""
     if orig == "" then
@@ -247,22 +373,57 @@ end
 
 local filter = {}
 
--- Collect at most PROCESS_LIMIT candidates, then stream the remainder through.
+-- Candidate types that carry no useful result for either mode.
+local DROP_TYPES = { sentence = true, reverse_lookup = true }
+
 function filter.func(input, env)
     local ctx = env.engine.context
     local code = ctx.input or ""
     local head = {}
     local flushed = false
+    local wubi_mode = nil
 
     local function flush_head()
+        -- 1) decide the input mode from the candidate types we collected
+        local has_table, has_phrase = false, false
+        for _i, cand in ipairs(head) do
+            local t = cand["type"]
+            if t == "table" or t == "completion" then
+                has_table = true
+            elseif t == "phrase" then
+                has_phrase = true
+            end
+        end
+        local mode = looks_like_wubi(code, has_table, has_phrase)
+        wubi_mode = mode
+
+        -- 2) keep only candidates that belong to this input mode
+        local kept = {}
+        for _i, cand in ipairs(head) do
+            local t = cand["type"] or ""
+            if t ~= "sentence" and t ~= "reverse_lookup" then
+                if mode then
+                    if t == "table" or t == "completion" then
+                        kept[#kept + 1] = cand
+                    end
+                else
+                    if t == "phrase" then
+                        kept[#kept + 1] = cand
+                    end
+                end
+            end
+        end
+        if #kept == 0 then
+            kept = head   -- never leave the menu empty
+        end
+
+        -- 3) English glosses for the candidates we keep
         if #code >= MIN_CODE_LEN then
             ensure_service()
-
-            -- 1) memory-only lookup: the hot path never touches the disk
             local missing = {}
             local seen = {}
             local count = 0
-            for _i, cand in ipairs(head) do
+            for _i, cand in ipairs(kept) do
                 local text = cand["text"]
                 if count >= MAX_LOOKUP then
                     break
@@ -276,8 +437,6 @@ function filter.func(input, env)
                     end
                 end
             end
-
-            -- 2) only a cache miss may read the file system
             if #missing > 0 then
                 load_fresh()
                 local still = {}
@@ -301,7 +460,7 @@ function filter.func(input, env)
             end
         end
 
-        for _i, cand in ipairs(head) do
+        for _i, cand in ipairs(kept) do
             local en = lookup(cand["text"])
             if en and en ~= "" then
                 yield(with_comment(cand, en, code))
@@ -309,6 +468,22 @@ function filter.func(input, env)
                 yield(cand)
             end
         end
+    end
+
+    -- Keep the wubi/pinyin split for the *whole* menu, not just the first
+    -- PROCESS_LIMIT candidates: a wubi code such as \"trnt\" produces only two
+    -- table candidates but dozens of pinyin phrases, and the phrases used to
+    -- leak through the tail unfiltered.  Filtering here stays allocation-free
+    -- per candidate, so the input thread never blocks.
+    local function keep_in_mode(cand)
+        local t = cand["type"] or ""
+        if DROP_TYPES[t] then
+            return false
+        end
+        if wubi_mode then
+            return t == "table" or t == "completion"
+        end
+        return t == "phrase"
     end
 
     for cand in input:iter() do
@@ -319,7 +494,9 @@ function filter.func(input, env)
                 flush_head()
                 flushed = true
             end
-            yield(cand)
+            if wubi_mode == nil or keep_in_mode(cand) then
+                yield(cand)
+            end
         end
     end
     if not flushed then
