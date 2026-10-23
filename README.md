@@ -60,6 +60,7 @@ rime-en-gloss 把这件事**放进输入法本身**：候选词右边直接给�
 | 零网络依赖 | 全部数据来自离线词典 CC-CEDICT + 人工校准表，不需要任何账号或密钥 |
 | 不卡宿主程序 | 只在缓存未命中时读盘、单次最多解析 4 万行、只处理前 30 个候选、绝不在输入线程里启动进程 |
 | 模糊匹配五笔/拼音 | 作为 filter 挂在任意方案上：五笔、拼音、双拼都行 |
+| 五笔/拼音分栏 | 同一串编码既是五笔码又是拼音时，按 `lua/wubi_override.txt` 白名单决定走哪边：`yaa` 出「试」而不是「鸭啊」 |
 | 可离线扩展 | 想要生僻词/长句也有英文，可另跑一个本地小模型服务（可选，非必需） |
 
 ## 快速开始
@@ -78,8 +79,9 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ### 手动安装（任意平台）
 
 ```bash
-# 1) 插件
-cp lua/input_text.lua   ~/.config/ibus/rime/lua/          # 路径按你的前端调整
+# 1) 插件 + 五笔/拼音分栏白名单
+cp lua/input_text.lua    ~/.config/ibus/rime/lua/         # 路径按你的前端调整
+cp lua/wubi_override.txt ~/.config/ibus/rime/lua/
 #    小狼毫：%APPDATA%\Rime\lua\     鼠须管：~/Library/Rime/lua/
 
 # 2) 生成词表
@@ -178,6 +180,22 @@ python build_cache.py --cedict data/cedict.json \
 
 `--dict-dir` 指向装有 `wubi86.dict.yaml` / `pinyin_simp.dict.yaml` 的目录：脚本会读取其中的**真实词频权重**来排序，让高频词排在文件前面、更快可用。缺失也不影响正确性。
 
+### 五笔码被当成拼音（`yaa` → 鸭啊）
+
+`lua/input_text.lua` 会把输入分成「五笔」和「拼音」两种模式。问题是有些**合法五笔码也能完整切成拼音音节**（`yaa` = 试 = `ya`+`a`；`eee` = 月 = `e`+`e`+`e`），如果只看“能不能切分”就会把五笔候选丢掉。
+
+`lua/wubi_override.txt` 是运行时白名单：一行一个码，命中即强制按五笔处理。它由 `tools/gen_wubi_override.py` 离线生成（码不是拼音音节、不在精选拼音词表、且拼音词典同拼写权重 < 1000 才入表），当前 1,122 条。
+
+换过五笔/拼音词典后可以重新生成：
+
+```bash
+python tools/gen_wubi_override.py --rime-dir ~/.config/ibus/rime --out-dir /tmp/wubi_build
+cp /tmp/wubi_build/wubi_override.txt lua/wubi_override.txt   # 或直接放进 Rime 的 lua/ 目录
+# 重启输入法服务即可（lua 不需要重新部署）
+```
+
+> 生僻字（CJK 扩展区）在 `extended_charset=常用` 时本来就不会出现在候选里，需要开「增广」。
+
 ## 可选：长尾词离线补全
 
 词典没有收录的口语长词（3 字以上）可以交给一个**本地**小模型（CTranslate2 + Argos 中英模型，约 74 MB）翻译，结果会追加到同一张表里。
@@ -198,11 +216,16 @@ python tools/optional_mt_server.py --no-http   # 其他平台
 ```
 rime-en-gloss/
 ├── lua/
-│   └── input_text.lua            # 候选英文过滤器（唯一的运行时组件）
+│   ├── input_text.lua            # 候选英文过滤器（唯一的运行时组件）
+│   └── wubi_override.txt         # 五笔码白名单（1,122 码，防止五笔码被当拼音）
 ├── tools/
 │   ├── glossary.py               # 人工校准表 + 释义挑选算法（核心）
 │   ├── fetch_cedict.py           # 下载 / 转换 CC-CEDICT
 │   ├── build_cache.py            # 生成 cache.txt（纯标准库）
+│   ├── build_pinyin_exp.py       # 从 CC-CEDICT 扩充拼音词库
+│   ├── build_pinyin_simp_merged.py # 合并拼音词库（原版 + CEDICT + 万象）
+│   ├── gen_wubi_override.py      # 重新生成 lua/wubi_override.txt
+│   ├── pinyin_keep.txt           # 精选拼音词快照（生成器的输入）
 │   ├── optional_mt_server.py     # 可选的本地模型服务
 │   └── fetch_mt_model.py         # 下载模型
 ├── data/
@@ -218,7 +241,12 @@ rime-en-gloss/
     ├── quality-review.md         # 译义质量审查记录
     ├── troubleshooting.md        # 排障
     └── releases/
-        └── v1.0.0.md             # 各版本发布说明（离线可查）
+        ├── v1.0.0.md
+        ├── v1.1.0.md
+        ├── v1.2.0.md
+        ├── v1.3.0.md
+        ├── v1.3.1.md
+        └── v1.3.2.md             # 各版本发布说明（离线可查）
 ```
 
 ## 参与开发

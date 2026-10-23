@@ -39,12 +39,14 @@ if (-not (Test-Path $RimeDir)) {
 $LuaDir = Join-Path $RimeDir "lua"
 if (-not (Test-Path $LuaDir)) { New-Item -ItemType Directory -Path $LuaDir | Out-Null }
 Copy-Item (Join-Path $Repo "lua\input_text.lua") (Join-Path $LuaDir "input_text.lua") -Force
-Write-Host "[1/5] lua plugin       -> $LuaDir\input_text.lua"
+Copy-Item (Join-Path $Repo "lua\wubi_override.txt") (Join-Path $LuaDir "wubi_override.txt") -Force
+Write-Host "[1/5] lua plugin       -> $LuaDir\input_text.lua (+ wubi_override.txt)"
 
 # ---------------------------------------------------------------- 2. toolchain
 $ToolsDir = Join-Path $RimeDir "tools"
 if (-not (Test-Path $ToolsDir)) { New-Item -ItemType Directory -Path $ToolsDir | Out-Null }
 Copy-Item (Join-Path $Repo "tools\*.py") $ToolsDir -Force
+Copy-Item (Join-Path $Repo "tools\pinyin_keep.txt") $ToolsDir -Force
 Copy-Item (Join-Path $Repo "data\overrides_legacy.json") $ToolsDir -Force
 $DataDir = Join-Path $ToolsDir "data"
 if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir | Out-Null }

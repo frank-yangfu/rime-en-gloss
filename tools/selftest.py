@@ -107,6 +107,37 @@ def main():
     check("filter does not hand-build candidate ranges",
           'Candidate("table", 0' not in code_only, True)
 
+    print("-- wubi override data --")
+    # The filter splits wubi and pinyin candidates by shape; some legal wubi
+    # codes also split into pinyin syllables (yaa = 试, but also ya+a = 鸭啊).
+    # lua/wubi_override.txt lists the codes that must stay wubi.  A regression
+    # here means either the data file was lost/edited or the loader was removed.
+    override_path = os.path.join(HERE, "..", "lua", "wubi_override.txt")
+    override_codes = []
+    if os.path.isfile(override_path):
+        with open(override_path, encoding="utf-8") as f:
+            override_codes = [l.strip() for l in f
+                              if l.strip() and not l.startswith("#")]
+    codes = set(override_codes)
+    check("override file has 1,122 codes", len(codes), 1122)
+    for code in ("yaa", "eee", "aqi", "nudu", "wage", "yaci"):
+        check("override keeps " + code, code in codes, True)
+    for code in ("shi", "gege", "tade", "guge", "nihao"):
+        check("override excludes " + code, code in codes, False)
+    check("lua loads wubi_override.txt", "wubi_override.txt" in lua_src, True)
+    # The override must be checked before the pinyin split, otherwise yaa is
+    # classified as pinyin and the wubi candidates are dropped again.
+    pos_override = code_only.find("if override_codes()[input] then")
+    pos_split = code_only.find("if splits_into_pinyin(input) then")
+    check("override checked before pinyin split",
+          0 <= pos_override < pos_split, True)
+    keep_path = os.path.join(HERE, "pinyin_keep.txt")
+    keep_lines = 0
+    if os.path.isfile(keep_path):
+        with open(keep_path, encoding="utf-8") as f:
+            keep_lines = sum(1 for l in f if l.strip())
+    check("curated pinyin list is present", keep_lines >= 1000, True)
+
     print("-- table sizes --")
     print("   SINGLE %d | WORD %d | COLLOQUIAL %d | LEGACY %d"
           % (len(glossary.SINGLE), len(glossary.WORD),

@@ -19,6 +19,33 @@ The input string decides the mode. A wubi code is 1-4 letters drawn from the
 wubi alphabet and is *not* a sequence of legal pinyin syllables; a pinyin
 spelling is always splittable into syllables from the dictionary.
 
+Wubi override list
+------------------
+Some *legal* wubi codes are also legal pinyin spellings, so the split above
+sends them to the pinyin side and the wubi result disappears:
+
+    yaa  -- wubi 试, but splits as ya + a   -> 鸭啊 on the pinyin side
+    eee  -- wubi 月, but splits as e + e + e -> 饿饿饿
+
+wubi_override.txt lists the codes that must stay wubi, one code per line;
+blank lines and lines starting with '#' are ignored.  An input found in the
+list is forced to wubi mode before the pinyin split is attempted, so the wubi
+candidates are kept and the pinyin ones dropped.
+
+The list is generated offline by tools/gen_wubi_override.py.  A code is added
+only when (a) it splits into pinyin syllables, (b) it is not itself a pinyin
+syllable, (c) it is not a word in the curated pinyin dictionary, and (d) the
+live pinyin dictionary has no entry of the same spelling with weight >= 1000.
+Genuine pinyin spellings therefore stay pinyin; regenerate the list after
+replacing the wubi or pinyin dictionary.  Nothing writes it at runtime.
+
+Lookup order -- the first file that exists wins, and it is read exactly once:
+    1. the directory this lua file lives in (debug.getinfo, source "@<path>")
+    2. $RIME_EN_GLOSS_DIR, the helper mailbox, when set
+    3. $TEMP/rime_argos/
+A missing or unreadable file is not an error: the filter then behaves exactly
+as it did before, and the failed lookup is never retried per keystroke.
+
 Design rules that keep the host application responsive
 -----------------------------------------------------
 The filter runs synchronously inside the input thread of whatever program you
@@ -40,6 +67,139 @@ local REQ_FILE = MAILBOX .. "/request.txt"
 local HEARTBEAT_FILE = MAILBOX .. "/heartbeat.txt"
 
 local DEBUG = (os.getenv("RIME_EN_GLOSS_DEBUG") == "1")
+
+-- ---------------------------------------------------------------------------
+-- wubi override list
+-- ---------------------------------------------------------------------------
+-- Some legal wubi codes also split into legal pinyin syllables ("yaa" = 试,
+-- "eee" = 月), so looks_like_wubi() below would send them to the pinyin side
+-- and the wubi candidates would vanish.  wubi_override.txt lists those codes,
+-- one per line, and any input found there is forced to wubi mode.
+--
+-- The filter runs in the input thread of the host application, so the list is
+-- read lazily, exactly once, and every failure is swallowed: a missing or
+-- broken file simply leaves the override table empty and the filter behaves
+-- as it did before.  See the header comment for the search order.
+local OVERRIDE = nil                  -- nil = not read yet; table = read once
+local OVERRIDE_FILE = "wubi_override.txt"
+local MAX_OVERRIDE_LINES = 4096       -- keeps a runaway file from stalling
+local MAX_OVERRIDE_CODE = 24          -- no real input is longer than this
+
+-- Diagnostics only; must never break typing.
+local function override_trace(msg)
+    if not DEBUG then
+        return
+    end
+    pcall(function()
+        local f = io.open(MAILBOX .. "/filter_debug.log", "a")
+        if f then
+            f:write(os.date("%Y-%m-%d %H:%M:%S ") .. msg .. "\n")
+            f:close()
+        end
+    end)
+end
+
+-- Directory of this lua file.  debug.getinfo(1, "S").source is "@<path>" for
+-- a chunk loaded from a file; a chunk loaded from a string has no "@" and
+-- there is no directory to search.
+local function script_directory()
+    -- debug.getinfo must be called from a Lua frame: passing it straight to
+    -- pcall(debug.getinfo, 1, "S") makes level 1 the C frame of pcall itself,
+    -- whose source is "=[C]" and has no directory at all.  Calling it inside
+    -- this closure keeps level 1 on this chunk.
+    local ok, source = pcall(function()
+        return debug.getinfo(1, "S").source
+    end)
+    if not ok or type(source) ~= "string" then
+        return nil
+    end
+    local dir = source:match("^@(.*)[/\\][^/\\]*$")
+    if dir and dir ~= "" then
+        return dir
+    end
+    return nil
+end
+
+-- Candidate locations in priority order: next to this lua file, the mailbox
+-- ($RIME_EN_GLOSS_DIR), then %TEMP%/rime_argos.
+local function override_paths()
+    local paths = {}
+    local dir = script_directory()
+    if dir then
+        paths[#paths + 1] = dir .. "/" .. OVERRIDE_FILE
+    end
+    local mailbox = os.getenv("RIME_EN_GLOSS_DIR")
+    if mailbox and mailbox ~= "" then
+        paths[#paths + 1] = mailbox .. "/" .. OVERRIDE_FILE
+    end
+    local base = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP") or "/tmp"
+    paths[#paths + 1] = base .. "/rime_argos/" .. OVERRIDE_FILE
+    return paths
+end
+
+-- Parse one file into a set of codes.  Returns nil when the file cannot be
+-- opened, otherwise the set (which may be empty).  A read error keeps the
+-- codes parsed so far instead of raising.
+local function read_override(path)
+    local f = io.open(path, "r")
+    if not f then
+        return nil
+    end
+    local set = {}
+    local lines = 0
+    pcall(function()
+        for raw in f:lines() do
+            lines = lines + 1
+            if lines > MAX_OVERRIDE_LINES then
+                break
+            end
+            local line = raw:gsub("\r$", "")
+            line = line:match("^%s*(.-)%s*$") or ""
+            if line ~= "" and line:sub(1, 1) ~= "#" and #line <= MAX_OVERRIDE_CODE then
+                set[line] = true
+            end
+        end
+    end)
+    pcall(function()
+        f:close()
+    end)
+    return set
+end
+
+local function load_override()
+    -- Mark as loaded before touching the disk: nothing here may run twice or
+    -- turn into per-keystroke IO, not even after a failure.
+    OVERRIDE = {}
+    local ok, err = pcall(function()
+        local paths = override_paths()
+        override_trace("wubi override: searching " .. table.concat(paths, " ; "))
+        for i = 1, #paths do
+            local set = read_override(paths[i])
+            if set then
+                local count = 0
+                for _ in pairs(set) do
+                    count = count + 1
+                end
+                OVERRIDE = set
+                override_trace("wubi override: " .. count .. " code(s) from " .. paths[i])
+                return
+            end
+        end
+        override_trace("wubi override: no " .. OVERRIDE_FILE .. " found")
+    end)
+    if not ok then
+        OVERRIDE = {}
+        override_trace("wubi override: load failed: " .. tostring(err))
+    end
+    return OVERRIDE
+end
+
+local function override_codes()
+    if OVERRIDE == nil then
+        return load_override()
+    end
+    return OVERRIDE
+end
 
 local MAX_LOOKUP = 6
 local MAX_LEN = 12
@@ -176,6 +336,7 @@ local SHORT_CODE_LIMIT = 3
 
 -- Decide the input mode.
 --
+--   * an input listed in wubi_override.txt is always a wubi code
 --   * a spelling that splits into legal pinyin syllables is pinyin
 --   * a spelling that does not, but produced table candidates, is a wubi code
 --   * anything else (no table candidates and not splittable, e.g. "abc") is
@@ -184,6 +345,13 @@ local SHORT_CODE_LIMIT = 3
 local function looks_like_wubi(input, has_table_cand, has_phrase_cand)
     if input == "" then
         return false
+    end
+    -- A code the user listed in wubi_override.txt is wubi by definition.  This
+    -- check has to come before the pinyin split: "yaa" (试) and "eee" (月) are
+    -- legal wubi codes *and* legal pinyin spellings, and the split would send
+    -- them to the pinyin side.
+    if override_codes()[input] then
+        return true
     end
     -- The single most reliable signal: a spelling splittable into legal pinyin
     -- syllables is pinyin.  This is checked first because a wubi code such as
@@ -404,6 +572,13 @@ function filter.func(input, env)
     local head = {}
     local flushed = false
     local wubi_mode = nil
+    -- When the chosen mode has no candidate at all (e.g. a schema without a
+    -- pinyin translator, or a rare wubi char hidden by the charset filter),
+    -- the menu falls back to *all* buffered candidates.  Tail filtering must
+    -- be switched off too: otherwise the fallback shows the first page and
+    -- silently drops every later wubi candidate (a pure wubi86 schema would
+    -- lose everything after candidate 30).
+    local mode_filtering = true
 
     local function flush_head()
         -- 1) decide the input mode from the candidate types we collected
@@ -436,7 +611,8 @@ function filter.func(input, env)
             end
         end
         if #kept == 0 then
-            kept = head   -- never leave the menu empty
+            kept = head        -- never leave the menu empty
+            mode_filtering = false
         end
 
         -- 3) English glosses for the candidates we keep
@@ -498,6 +674,9 @@ function filter.func(input, env)
     -- leak through the tail unfiltered.  Filtering here stays allocation-free
     -- per candidate, so the input thread never blocks.
     local function keep_in_mode(cand)
+        if not mode_filtering then
+            return true   -- no mode candidate survived; pass the rest through
+        end
         local t = cand["type"] or ""
         if DROP_TYPES[t] then
             return false

@@ -51,6 +51,19 @@ cd tools && python fetch_cedict.py && python build_cache.py
 
 ---
 
+## 打五笔码却出拼音（如 `yaa` → 鸭啊，没有「试」）
+
+说明 `lua/wubi_override.txt` 没装或没生效：插件把 `yaa` 当成了 `ya`+`a` 拼音。
+
+1. 确认文件在 Rime 用户目录的 `lua/` 下（和 `input_text.lua` 同目录），约 1,122 行；
+2. 重启 `WeaselServer.exe`（lua 改动无需重新部署）；
+3. 设 `RIME_EN_GLOSS_DEBUG=1`，看 `filter_debug.log` 是否有
+   `wubi override: 1122 code(s) from ...`；没有就是路径不对或文件缺失；
+4. 换过五笔/拼音词典后需要重新生成（见 README「五笔码被当成拼音」）。
+
+纯五笔/纯拼音方案不用这个文件也能用；只有五笔·拼音混合方案需要。生僻字（CJK 扩展区）在
+「常用」字符集下不会出现，开「增广」后才可见。
+
 ## 打字卡顿 / 宿主程序整个卡死
 
 插件在宿主的输入线程里运行，任何耗时操作都会让它冻结。请确认：

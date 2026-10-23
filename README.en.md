@@ -37,8 +37,9 @@ host application**.
 ## Install (manual, any platform)
 
 ```bash
-# 1) the filter
-cp lua/input_text.lua <rime user dir>/lua/
+# 1) the filter and its wubi-code list
+cp lua/input_text.lua     <rime user dir>/lua/
+cp lua/wubi_override.txt <rime user dir>/lua/
 
 # 2) the table
 cd tools
@@ -73,6 +74,11 @@ you type into, so it does no HTTP, never execs a process, inspects at most 30
 candidates, reads the disk only on a cache miss, and parses at most 40k lines
 per keystroke. See `docs/how-it-works.md`.
 
+It also keeps wubi and pinyin candidates apart. A few legal wubi codes split
+into pinyin syllables as well (`yaa` = 试, but also `ya` + `a` = 鸭啊); the codes
+that must stay wubi are listed in `lua/wubi_override.txt` (1,122 entries,
+regenerated offline by `tools/gen_wubi_override.py`).
+
 ## Data quality
 
 | word | first CEDICT sense | what you get |
@@ -96,14 +102,17 @@ See `docs/quality-review.md`.
 
 ```
 lua/input_text.lua          the only runtime component
+lua/wubi_override.txt       wubi codes that must not be treated as pinyin
 tools/glossary.py           hand-checked tables + sense picker
 tools/build_cache.py        rebuild the table
+tools/gen_wubi_override.py  regenerate the wubi-code list
+tools/pinyin_keep.txt       curated pinyin words (generator input)
 tools/fetch_cedict.py       download/convert CC-CEDICT
 tools/optional_mt_server.py optional offline model service (long-tail words)
 schema/add_filter.patch.yaml how to attach the filter
 scripts/                    Windows installer & service launchers
 docs/                       design notes, quality review, troubleshooting
-docs/releases/v1.0.0.md     release notes, offline
+docs/releases/              release notes, offline (v1.0.0 … v1.3.2)
 ```
 
 ## Author

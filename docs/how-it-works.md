@@ -30,13 +30,13 @@ Rime 的 `lua_filter` 是被同步调用的：你在微信里按下 `w`，微信
 
 ## 3. 候选对象的构造方式
 
-librime-lua 暴露的候选对象**没有 `end` 属性**（实测 dump：`type=table start=0 end=nil`）。
-之前的写法 `Candidate(cand.type, cand.start, cand.end, ...)` 每次都抛错，被 `pcall`
-吞掉后回退成原候选，于是「英文永远不显示」且日志里刷满 `with_comment failed`。
+候选对象**没有 `end` 属性**（实测 dump：`type=table start=0 end=nil`），而且直接用
+`Candidate(cand.type, cand.start, cand.end, ...)` 重建会把输入区间写死：拼音 `li|lin|fei`、
+五笔连打 `sniagwqjh` 这类多段组句，选第一段后剩余编码会被吞掉——这就是 v1.1.0 修掉的人名 bug。
 
-现在固定用 `Candidate("table", 0, #code, cand["text"], comment)` 构造：不读候选属性，
-`comment` 槽拼成 `编码, 英文`。单字候选本身没有 comment，就用用户当前输入的编码兜底，
-保证每一行格式一致。
+现在固定用 `ShadowCandidate(cand, cand["type"] or "table", cand["text"], merged)`：
+只替换注释，候选的 `start/end` 原样继承；`ShadowCandidate` 不可用时保持原候选不变。
+`comment` 槽拼成 `编码, 英文`，单字没有 comment 时用当前输入编码兜底。
 
 ## 4. 只挂 filter，不挂 processor
 
@@ -53,7 +53,31 @@ librime-lua 暴露的候选对象**没有 `end` 属性**（实测 dump：`type=t
 另一个坑：Rime 的增量部署可能判定「无需重建」。改了 schema 却没生效时，删掉
 `build/` 目录强制全量重建最省事。
 
-## 6. 沙箱/代理环境
+## 6. 五笔/拼音分栏与 wubi_override.txt
+
+同一个编码可能既是五笔码又是拼音。lua 会根据 librime 给候选打的 `type` 判断输入属于哪一边：
+`table/completion/user_table` 是五笔，`phrase/user_phrase` 是拼音，`sentence/reverse_lookup`
+直接丢弃。判定后只保留对应类型的候选；尾段（第 30 个之后）也按同一模式过滤，避免拼音词
+从后面漏出来。
+
+判定基于输入串本身：能**完整切成拼音音节**就当拼音，否则有字表候选就当五笔。这个规则有一个
+漏洞：`yaa`（试）、`eee`（月）这类合法五笔码也能按音节切开（`ya`+`a`、`e`+`e`+`e`），会被
+误判成拼音、五笔候选全部消失。`lua/wubi_override.txt` 就是补丁：一行一个码，命中则**在切分
+之前**强制走五笔。文件由 `tools/gen_wubi_override.py` 离线生成，入表条件是：
+
+1. 码能完整切成拼音音节（否则本来就按五笔处理）；
+2. 码本身不是拼音音节（`shi/ni/wo` 这类保留拼音）；
+3. 码不在精选拼音词表里（`gege`=哥哥、`tade`=他的、`guge`=谷歌 保留拼音）；
+4. 拼音词典里同拼写的最大权重 < 1000（`tayi`=他以 这类仍保留拼音）。
+
+生成器把 `pinyin_keep.txt` 和 `report.md` 一并写出，重跑幂等。运行时只读一次文件，找不到就
+静默回退到“没有白名单”的旧行为——升级时忘了拷 `wubi_override.txt` 只会退回旧症状，不会
+打不出字。
+
+纯五笔/纯拼音方案没有“另一边”的候选：如果选中的模式一个候选都没有，过滤会整体关闭
+（`mode_filtering=false`），否则纯五笔方案的菜单会被截断到前 30 条。
+
+## 7. 沙箱/代理环境
 
 如果在带 `http_proxy` 环境变量的 shell 里启动 helper 服务，进程会继承该代理，
 所有外网请求都会失败（表现为 `10061 connection refused`）。启动脚本里应先清空
