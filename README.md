@@ -61,7 +61,7 @@ rime-en-gloss 把这件事**放进输入法本身**：候选词右边直接给�
 | 不卡宿主程序 | 只在缓存未命中时读盘、单次最多解析 4 万行、只处理前 30 个候选、绝不在输入线程里启动进程 |
 | 模糊匹配五笔/拼音 | 作为 filter 挂在任意方案上：五笔、拼音、双拼都行 |
 | 五笔/拼音分栏 | 同一串编码既是五笔码又是拼音时，按 `lua/wubi_override.txt` 白名单决定走哪边：`yaa` 出「试」而不是「鸭啊」 |
-| 五笔常用词补全 | v1.4.0 提供约 68,000 条扩展词条（骑行/车店/高铁…），修复“五笔码打不出词或出别的词” |
+| 五笔常用词补全 | v1.5.0 提供约 147,000 条扩展词条（骑行/车店/异响/扫码…），修复“五笔码打不出词或出别的词” |
 | 可离线扩展 | 想要生僻词/长句也有英文，可另跑一个本地小模型服务（可选，非必需） |
 
 ## 快速开始
@@ -203,18 +203,21 @@ cp /tmp/wubi_build/wubi_override.txt lua/wubi_override.txt   # 或直接放进 R
 
 > 生僻字（CJK 扩展区）在 `extended_charset=常用` 时本来就不会出现在候选里，需要开「增广」。
 
-### 五笔常用词补全（骑行 cdtf / 车店 lgyh）
+### 五笔常用词补全（骑行 cdtf / 车店 lgyh / 异响 nakt）
 
-老版 `wubi86` 词库缺现代常用词：`cdtf` 只有「参选」，`lgyh` 一条都没有。安装 v1.4.0 的
-Release 附件 `wubi86.extended.dict.yaml`（约 68,000 条补充词条，导入基础词库）即可补齐：
+老版 `wubi86` 词库缺现代常用词：`cdtf` 只有「参选」，`lgyh`、`nakt` 一条都没有。安装 v1.5.0 的
+Release 附件 `wubi86.extended.dict.yaml`（约 147,000 条补充词条，导入基础词库）即可补齐；
+再关闭五笔补全，菜单更干净：
 
 ```yaml
 # wubi_pinyin.custom.yaml
 patch:
   translator/dictionary: wubi86.extended
+  translator/enable_completion: false
 ```
 
-详细原理、自己生成（`tools/build_wubi_words.py`）、添加个人词条、以及
+v1.5.0 起，既是拼音又是五笔词码的输入会**先出五笔词、再出拼音**（`tade`→长有/他的，
+`aiyi`→东京/爱意）。详细原理、自己生成（`tools/build_wubi_words.py`）、添加个人词条、以及
 「拼音只认全拼」的配置见 [`docs/wubi-words.md`](docs/wubi-words.md)。
 
 ## 可选：长尾词离线补全
@@ -271,7 +274,8 @@ rime-en-gloss/
         ├── v1.3.0.md
         ├── v1.3.1.md
         ├── v1.3.2.md
-        └── v1.4.0.md             # 各版本发布说明（离线可查）
+        ├── v1.4.0.md
+        └── v1.5.0.md             # 各版本发布说明（离线可查）
 ```
 
 ## 参与开发

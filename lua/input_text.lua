@@ -204,7 +204,7 @@ end
 local MAX_LOOKUP = 6
 local MAX_LEN = 12
 local MIN_CODE_LEN = 1
-local PROCESS_LIMIT = 30
+local PROCESS_LIMIT = 200
 local MAX_LINES_PER_CALL = 40000
 local SERVICE_CHECK_INTERVAL = 300
 
@@ -399,6 +399,17 @@ local function lookup(text)
     return cache[text]
 end
 
+local function utf8_len(text)
+    if not text then
+        return 0
+    end
+    local ok, n = pcall(utf8.len, text)
+    if ok and n then
+        return n
+    end
+    return #text
+end
+
 local function is_chinese(text)
     if not text or text == "" then
         return false
@@ -572,6 +583,7 @@ function filter.func(input, env)
     local head = {}
     local flushed = false
     local wubi_mode = nil
+    local mixed = false
     -- When the chosen mode has no candidate at all (e.g. a schema without a
     -- pinyin translator, or a rare wubi char hidden by the charset filter),
     -- the menu falls back to *all* buffered candidates.  Tail filtering must
@@ -594,18 +606,46 @@ function filter.func(input, env)
         local mode = looks_like_wubi(code, has_table, has_phrase)
         wubi_mode = mode
 
+        -- 1b) A pinyin-looking input can also be an exact wubi *word* code
+        -- (tade = 长有, gege = 静静, aiyi = 东京).  Forcing a single mode would
+        -- hide one side, so keep the wubi words first and append the pinyin
+        -- candidates after them (mixed mode).  Single-character collisions are
+        -- still handled exclusively by wubi_override.txt.
+        local word_cands = {}
+        if not mode then
+            for _i, cand in ipairs(head) do
+                local t = cand["type"] or ""
+                local text = cand["text"] or ""
+                if (t == "table" or t == "user_table") and utf8_len(text) >= 2 then
+                    word_cands[#word_cands + 1] = cand
+                end
+            end
+        end
+        mixed = (not mode) and #word_cands > 0 and has_phrase
+
         -- 2) keep only candidates that belong to this input mode
         local kept = {}
-        for _i, cand in ipairs(head) do
-            local t = cand["type"] or ""
-            if not DROP_TYPES[t] then
-                if mode then
-                    if is_wubi_type(t) then
-                        kept[#kept + 1] = cand
-                    end
-                else
-                    if is_pinyin_type(t) then
-                        kept[#kept + 1] = cand
+        if mixed then
+            for _i, cand in ipairs(word_cands) do
+                kept[#kept + 1] = cand
+            end
+            for _i, cand in ipairs(head) do
+                if is_pinyin_type(cand["type"] or "") then
+                    kept[#kept + 1] = cand
+                end
+            end
+        else
+            for _i, cand in ipairs(head) do
+                local t = cand["type"] or ""
+                if not DROP_TYPES[t] then
+                    if mode then
+                        if is_wubi_type(t) then
+                            kept[#kept + 1] = cand
+                        end
+                    else
+                        if is_pinyin_type(t) then
+                            kept[#kept + 1] = cand
+                        end
                     end
                 end
             end
@@ -680,6 +720,13 @@ function filter.func(input, env)
         local t = cand["type"] or ""
         if DROP_TYPES[t] then
             return false
+        end
+        if mixed then
+            local text = cand["text"] or ""
+            if (t == "table" or t == "user_table") and utf8_len(text) >= 2 then
+                return true
+            end
+            return is_pinyin_type(t)
         end
         if wubi_mode then
             return is_wubi_type(t)

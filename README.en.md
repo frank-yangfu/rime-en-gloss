@@ -79,9 +79,11 @@ into pinyin syllables as well (`yaa` = 试, but also `ya` + `a` = 鸭啊); the c
 that must stay wubi are listed in `lua/wubi_override.txt` (1,122 entries,
 regenerated offline by `tools/gen_wubi_override.py`).
 
-v1.4.0 also ships a supplemental Wubi word dictionary (`wubi86.extended.dict.yaml`,
-~68,000 entries) for ordinary words missing from the old base table: 骑行 (cdtf),
-车店 (lgyh), 高铁 (ymqr) and friends. See `docs/wubi-words.md`.
+v1.5.0 ships a supplemental Wubi word dictionary (`wubi86.extended.dict.yaml`,
+~147,000 entries) for ordinary words missing from the old base table (骑行 cdtf,
+车店 lgyh, 异响 nakt, 扫码 rvdc …), plus a mixed mode: when an input is both pinyin
+and an exact wubi word code, the wubi words come first and pinyin follows.
+See `docs/wubi-words.md`.
 
 ## Data quality
 
@@ -119,7 +121,7 @@ scripts/                    Windows installer & service launchers
 docs/                       design notes, quality review, troubleshooting
 data/wubi_words_extra.txt   hand-made entries for the supplemental dictionary
 docs/wubi-words.md          supplemental Wubi words + full-pinyin config
-docs/releases/              release notes, offline (v1.0.0 … v1.4.0)
+docs/releases/              release notes, offline (v1.0.0 … v1.5.0)
 ```
 
 ## Author
