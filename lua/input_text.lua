@@ -588,6 +588,7 @@ function filter.func(input, env)
     local flushed = false
     local wubi_mode = nil
     local mixed = false
+    local mixed_short = false
     -- When the chosen mode has no candidate at all (e.g. a schema without a
     -- pinyin translator, or a rare wubi char hidden by the charset filter),
     -- the menu falls back to *all* buffered candidates.  Tail filtering must
@@ -625,13 +626,31 @@ function filter.func(input, env)
                 end
             end
         end
-        mixed = (not mode) and #word_cands > 0 and has_phrase
+        -- 1c) 2-letter wubi short codes are also legal pinyin syllables
+        -- (wu = 们 but also 无, ni = 悄 but also 你).  Keep the wubi candidates
+        -- first and append pinyin, so neither side disappears.
+        local short_mixed = (not mode) and #code <= 2 and has_table and has_phrase
+        mixed_short = short_mixed
+        mixed = short_mixed or ((not mode) and #word_cands > 0 and has_phrase)
 
         -- 2) keep only candidates that belong to this input mode
         local kept = {}
         if mixed then
-            for _i, cand in ipairs(word_cands) do
-                kept[#kept + 1] = cand
+            if mixed_short then
+                local wubi_kept = 0
+                for _i, cand in ipairs(head) do
+                    local t = cand["type"] or ""
+                    if not DROP_TYPES[t] and is_wubi_type(t) then
+                        if wubi_kept < 3 then
+                            kept[#kept + 1] = cand
+                            wubi_kept = wubi_kept + 1
+                        end
+                    end
+                end
+            else
+                for _i, cand in ipairs(word_cands) do
+                    kept[#kept + 1] = cand
+                end
             end
             for _i, cand in ipairs(head) do
                 if is_pinyin_type(cand["type"] or "") then
@@ -726,9 +745,15 @@ function filter.func(input, env)
             return false
         end
         if mixed then
-            local text = cand["text"] or ""
-            if (t == "table" or t == "user_table") and utf8_len(text) >= 2 then
-                return true
+            if mixed_short then
+                if is_wubi_type(t) then
+                    return true
+                end
+            else
+                local text = cand["text"] or ""
+                if (t == "table" or t == "user_table") and utf8_len(text) >= 2 then
+                    return true
+                end
             end
             return is_pinyin_type(t)
         end
