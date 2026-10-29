@@ -204,7 +204,7 @@ end
 local MAX_LOOKUP = 6
 local MAX_LEN = 12
 local MIN_CODE_LEN = 1
-local PROCESS_LIMIT = 200
+local PROCESS_LIMIT = 1000
 local MAX_LINES_PER_CALL = 40000
 local SERVICE_CHECK_INTERVAL = 300
 
@@ -352,6 +352,10 @@ local function looks_like_wubi(input, has_table_cand, has_phrase_cand)
     -- them to the pinyin side.
     if override_codes()[input] then
         return true
+    end
+    -- A single letter is a wubi level-1 code first: "o" = 为, not 噢.
+    if #input == 1 then
+        return has_table_cand
     end
     -- The single most reliable signal: a spelling splittable into legal pinyin
     -- syllables is pinyin.  This is checked first because a wubi code such as

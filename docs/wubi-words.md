@@ -17,13 +17,12 @@
 v1.5.0 Release 附件提供 `wubi86.extended.dict.yaml`（约 **147,000** 条补充词条，3.2 MB）：
 
 1. 下载并放到 Rime 用户目录（与 `wubi86.dict.yaml` 同目录）；
-2. 在方案补丁里指向它，并建议关闭五笔补全（大词库下补全会淹没正常/拼音候选）：
+2. 在方案补丁里指向它（补全保持默认开启；v1.5.1 已把头部候选上限提到 1000，避免大词库淹没拼音）：
 
    ```yaml
    # wubi_pinyin.custom.yaml
    patch:
      translator/dictionary: wubi86.extended
-     translator/enable_completion: false
    ```
 
 3. 重新部署（改 YAML 必须部署；lua 不需要）。
@@ -110,9 +109,13 @@ patch:
 效果：`nh` / `nj` 这类缩写不再出拼音（走五笔），而 `nihao`、`beijing`、
 `zhongguo`（以及模糊音 `zongguo`）仍然正常。重新部署后生效（prism 会重建）。
 
-## 六、注意
+## 六、单字母与短码
+
+- **单字母按五笔一级简码优先**：`o`→为、`a`→工、`e`→有，不会先出拼音的「噢/啊/饿」。
+- **短码补全保持开启**：`wq` 会先出「你」，随后是 低 / 像 / 爸 / 爷 / 釜 …；
+  如果你确实不想要补全，可以手动设 `translator/enable_completion: false`，但短码列表会变短。
+
+## 七、注意
 
 - 补全的是“词表/词典里有的词”；任意新造组合（某些店名等）建议用 extra 文件。
 - 词条很多时菜单会变长；混排只影响“既是拼音又是五笔词码”的输入，其余保持不变。
-- 关闭五笔补全（`enable_completion: false`）是推荐项；个别用户如果依赖短码补全，
-  可以保留为 true，但 `shi` 这类输入的拼音候选可能被补全挤到后面。
