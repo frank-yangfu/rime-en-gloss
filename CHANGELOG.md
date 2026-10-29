@@ -2,6 +2,25 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-10-29
+
+### 新增
+
+- **五笔常用词补全词典**：Release 附件 `wubi86.extended.dict.yaml`（约 68,000 条补充词条，
+  导入基础 `wubi86` 词库）。修复 `骑行`（cdtf）、`车店`（lgyh）、`高铁`（ymqr）这类
+  “词库缺词、码打不出目标词”的问题。
+- **`tools/build_wubi_words.py`**：从任意中文词表生成补全词典，自动按
+  AaAbBaBb / AaBaCaCb / AaBaCaZa 计算五笔词码；支持 `--weights-file` 权重表与
+  `--extra` 手写词条（人名/个人词汇），重跑不丢。
+- **`tools/build_wubi_words.py` 配套文档 `docs/wubi-words.md`**：原理、生成方法、
+  个人词条添加，以及「拼音只认全拼」的推荐配置（移除 `pinyin:/abbreviation`）。
+
+### 说明
+
+- lua 插件、`lua/wubi_override.txt`、释义 `cache.txt` 均无变化；补全词典是可选的
+  （不装不影响现有功能）。
+- 词典/方案 YAML 改动需要重新部署 Rime（lua 改动仍只需重启服务）。
+
 ## [1.3.2] - 2026-10-23
 
 ### 修复

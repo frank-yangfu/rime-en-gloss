@@ -138,6 +138,17 @@ def main():
             keep_lines = sum(1 for l in f if l.strip())
     check("curated pinyin list is present", keep_lines >= 1000, True)
 
+    print("-- wubi word supplement --")
+    extra_path = os.path.join(HERE, "..", "data", "wubi_words_extra.txt")
+    extra_text = ""
+    if os.path.isfile(extra_path):
+        with open(extra_path, encoding="utf-8") as f:
+            extra_text = f.read()
+    check("wubi words extra has 骑行", "骑行\tcdtf" in extra_text, True)
+    check("wubi words extra has 车店", "车店\tlgyh" in extra_text, True)
+    check("wubi word builder is present",
+          os.path.isfile(os.path.join(HERE, "build_wubi_words.py")), True)
+
     print("-- table sizes --")
     print("   SINGLE %d | WORD %d | COLLOQUIAL %d | LEGACY %d"
           % (len(glossary.SINGLE), len(glossary.WORD),

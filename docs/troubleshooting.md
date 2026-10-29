@@ -64,6 +64,17 @@ cd tools && python fetch_cedict.py && python build_cache.py
 纯五笔/纯拼音方案不用这个文件也能用；只有五笔·拼音混合方案需要。生僻字（CJK 扩展区）在
 「常用」字符集下不会出现，开「增广」后才可见。
 
+## 打五笔码出不来的词 / 出别的词（骑行、车店）
+
+通常是 `wubi86` 基础词库缺词，不是分栏 bug：`cdtf` 只有「参选」，`lgyh` 一条都没有。
+
+1. 安装 v1.4.0 Release 附件 `wubi86.extended.dict.yaml`（约 68,000 条补充词条）；
+2. 在方案补丁里指向它：`translator/dictionary: wubi86.extended`；
+3. 重新部署（改 YAML 必须部署）。
+
+也可以自己生成：`python tools/build_wubi_words.py ...`，详见 `docs/wubi-words.md`。
+个人词条加到 `data/wubi_words_extra.txt` 后重跑生成器，重跑不会丢。
+
 ## 打字卡顿 / 宿主程序整个卡死
 
 插件在宿主的输入线程里运行，任何耗时操作都会让它冻结。请确认：

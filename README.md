@@ -61,6 +61,7 @@ rime-en-gloss 把这件事**放进输入法本身**：候选词右边直接给�
 | 不卡宿主程序 | 只在缓存未命中时读盘、单次最多解析 4 万行、只处理前 30 个候选、绝不在输入线程里启动进程 |
 | 模糊匹配五笔/拼音 | 作为 filter 挂在任意方案上：五笔、拼音、双拼都行 |
 | 五笔/拼音分栏 | 同一串编码既是五笔码又是拼音时，按 `lua/wubi_override.txt` 白名单决定走哪边：`yaa` 出「试」而不是「鸭啊」 |
+| 五笔常用词补全 | v1.4.0 提供约 68,000 条扩展词条（骑行/车店/高铁…），修复“五笔码打不出词或出别的词” |
 | 可离线扩展 | 想要生僻词/长句也有英文，可另跑一个本地小模型服务（可选，非必需） |
 
 ## 快速开始
@@ -95,6 +96,12 @@ python build_cache.py                        # 生成 cache.txt（约 10 万条�
 #    patch:
 #      "engine/filters/+":
 #        - lua_filter@*input_text*filter
+
+# 4) 可选：五笔常用词补全（骑行 cdtf / 车店 lgyh 这类词）
+#    下载 Release v1.4.0 的 wubi86.extended.dict.yaml 放到 Rime 用户目录，
+#    并在 <方案>.custom.yaml 里加：
+#      translator/dictionary: wubi86.extended
+#    然后重新部署。详见 docs/wubi-words.md。
 ```
 
 `build_cache.py` 只依赖 Python 标准库。输出的词表默认写到 `%TEMP%/rime_argos/cache.txt`（Linux/macOS 同理），可用 `--out` 指定。
@@ -196,6 +203,20 @@ cp /tmp/wubi_build/wubi_override.txt lua/wubi_override.txt   # 或直接放进 R
 
 > 生僻字（CJK 扩展区）在 `extended_charset=常用` 时本来就不会出现在候选里，需要开「增广」。
 
+### 五笔常用词补全（骑行 cdtf / 车店 lgyh）
+
+老版 `wubi86` 词库缺现代常用词：`cdtf` 只有「参选」，`lgyh` 一条都没有。安装 v1.4.0 的
+Release 附件 `wubi86.extended.dict.yaml`（约 68,000 条补充词条，导入基础词库）即可补齐：
+
+```yaml
+# wubi_pinyin.custom.yaml
+patch:
+  translator/dictionary: wubi86.extended
+```
+
+详细原理、自己生成（`tools/build_wubi_words.py`）、添加个人词条、以及
+「拼音只认全拼」的配置见 [`docs/wubi-words.md`](docs/wubi-words.md)。
+
 ## 可选：长尾词离线补全
 
 词典没有收录的口语长词（3 字以上）可以交给一个**本地**小模型（CTranslate2 + Argos 中英模型，约 74 MB）翻译，结果会追加到同一张表里。
@@ -225,11 +246,13 @@ rime-en-gloss/
 │   ├── build_pinyin_exp.py       # 从 CC-CEDICT 扩充拼音词库
 │   ├── build_pinyin_simp_merged.py # 合并拼音词库（原版 + CEDICT + 万象）
 │   ├── gen_wubi_override.py      # 重新生成 lua/wubi_override.txt
+│   ├── build_wubi_words.py       # 生成五笔常用词补全词典
 │   ├── pinyin_keep.txt           # 精选拼音词快照（生成器的输入）
 │   ├── optional_mt_server.py     # 可选的本地模型服务
 │   └── fetch_mt_model.py         # 下载模型
 ├── data/
-│   └── overrides_legacy.json     # 早期人工校准表（历史积累）
+│   ├── overrides_legacy.json     # 早期人工校准表（历史积累）
+│   └── wubi_words_extra.txt      # 五笔补全词典的手写词条
 ├── schema/
 │   └── add_filter.patch.yaml     # 方案补丁示例与说明
 ├── scripts/
@@ -240,13 +263,15 @@ rime-en-gloss/
     ├── how-it-works.md           # 性能与不卡顿的设计取舍
     ├── quality-review.md         # 译义质量审查记录
     ├── troubleshooting.md        # 排障
+    ├── wubi-words.md             # 五笔常用词补全 + 拼音全拼配置
     └── releases/
         ├── v1.0.0.md
         ├── v1.1.0.md
         ├── v1.2.0.md
         ├── v1.3.0.md
         ├── v1.3.1.md
-        └── v1.3.2.md             # 各版本发布说明（离线可查）
+        ├── v1.3.2.md
+        └── v1.4.0.md             # 各版本发布说明（离线可查）
 ```
 
 ## 参与开发

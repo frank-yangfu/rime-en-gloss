@@ -1,0 +1,8 @@
+# Hand-made entries kept on top of the generated supplement.
+# Format: word<TAB>code<TAB>weight (same as a Rime dictionary line).
+# The first two entries are the extended personal names; 骑行/车店 are the
+# words reported in the v1.4.0 issue.
+杨满钊	sniagwqjh	50000000
+杨满钊	siqj	50000000
+骑行	cdtf	50000000
+车店	lgyh	50000000
