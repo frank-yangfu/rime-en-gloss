@@ -530,28 +530,221 @@ local function request_translation(texts)
     f:close()
 end
 
--- Rebuild a candidate with a comment, always "code, English".  The candidate's
--- input range must survive untouched (see the ShadowCandidate note in the
--- project docs): a hand-built range would break multi-segment compositions.
-local function with_comment(cand, extra, code)
-    local orig = cand["comment"] or ""
-    if orig == "" then
-        orig = code or ""
-    end
-    local merged
-    if orig ~= "" then
-        merged = orig .. ", " .. extra
-    else
-        merged = extra
-    end
+-- Rebuild a candidate with a comment showing only the English gloss.  The
+-- original comment (pinyin / code annotation) is dropped on purpose.  The
+-- candidate's input range must survive untouched (see the ShadowCandidate
+-- note in the project docs): a hand-built range would break multi-segment
+-- compositions.
+local function with_comment(cand, extra)
     local ok, new_cand = pcall(function()
-        return ShadowCandidate(cand, cand["type"] or "table", cand["text"], merged)
+        return ShadowCandidate(cand, cand["type"] or "table", cand["text"], extra)
     end)
     if ok and new_cand then
         return new_cand
     end
     log_debug("shadow_candidate unavailable, keep original: " .. tostring(cand["text"]))
     return cand
+end
+
+-- ---------------------------------------------------------------------------
+-- Tab commit -- pressing Tab types out the English gloss of the highlighted
+-- candidate.  One sense commits directly; several senses open a picker menu
+-- in the candidate window (digits/space/Tab select and confirm, any other
+-- key closes it).
+-- ---------------------------------------------------------------------------
+
+-- The incremental loader in load_cache() is capped at 40k lines per call and
+-- once per second, which is right for the per-keystroke filter path.  A
+-- candidate the user can tab to may sit anywhere in the file, so the
+-- processor reads the whole remaining file in one go instead.  This only
+-- happens on a Tab that hits a not-yet-loaded word, and afterwards the
+-- incremental loader sees sz == cache_offset and stops touching the disk.
+local function load_cache_full()
+    local f = io.open(CACHE_FILE, "rb")
+    if not f then
+        return
+    end
+    local sz = f:seek("end")
+    if sz < cache_offset then
+        cache = {}
+        cache_offset = 0
+    end
+    if sz == cache_offset then
+        f:close()
+        return
+    end
+    f:seek("set", cache_offset)
+    for raw_line in f:lines() do
+        local line = raw_line:gsub("\r$", "")
+        local zh, en = line:match("^([^\t]+)\t(.+)$")
+        if zh and en then
+            cache[zh] = en
+        end
+    end
+    cache_offset = f:seek("end")
+    f:close()
+end
+
+-- Everything the cache may hold for *text*, after exhausting both incremental
+-- loaders.  Returns nil when the word simply has no gloss.
+local function gloss_for(text)
+    local en = lookup(text)
+    if en then
+        return en
+    end
+    load_fresh()
+    load_cache()
+    en = lookup(text)
+    if en then
+        return en
+    end
+    load_cache_full()
+    return lookup(text)
+end
+
+-- Split the full gloss string into individual senses.  Senses are separated
+-- by semicolons or commas: "to 3D print; 3D printing, print in 3D" -> 3 items.
+local function split_glosses(en)
+    local out = {}
+    local seen = {}
+    for part in en:gmatch("[^;,]+") do
+        local s = part:match("^%s*(.-)%s*$")
+        if s ~= "" and not seen[s] then
+            seen[s] = true
+            out[#out + 1] = s
+        end
+    end
+    return out
+end
+
+local tab_commit = {}
+
+-- Shared state between this processor and the filter (same Lua module): a
+-- non-empty pending list turns the candidate window into a sense picker.
+local tab_state = { pending = nil, word = nil }
+
+local function clear_tab_state()
+    tab_state.pending = nil
+    tab_state.word = nil
+end
+
+-- librime ProcessResult values: 0 = kRejected, 1 = kAccepted, 2 = kNoop.
+
+-- Keys that operate INSIDE the picker without closing it: digits select,
+-- space commits the highlighted sense, paging / minus / equal / arrows
+-- navigate.  Anything else closes the menu first, then falls through with
+-- its normal meaning (letters keep typing the pinyin, Escape cancels,
+-- Return commits the raw input).
+local MENU_KEYS = {
+    ["space"] = true, ["Page_Down"] = true, ["Page_Up"] = true,
+    ["Up"] = true, ["Down"] = true, ["Left"] = true, ["Right"] = true,
+    ["Home"] = true, ["End"] = true, ["minus"] = true, ["equal"] = true,
+}
+for i = 0, 9 do
+    MENU_KEYS[tostring(i)] = true
+    MENU_KEYS["KP_" .. i] = true
+end
+
+local function menu_key(repr, ctx)
+    if not MENU_KEYS[repr] then
+        clear_tab_state()
+        ctx:refresh_non_confirmed_composition()
+        log_debug("tab menu closed by " .. repr)
+    end
+    return 2
+end
+
+-- Only a plain Tab (no modifiers, no release event; repr() covers that) opens
+-- the gloss.  Tab is consumed only when a menu opened or a gloss committed, so
+-- an unannotated candidate still lets the host application see the key --
+-- the same fall-through behaviour as before this processor existed.
+function tab_commit.func(key, env)
+    local repr = key:repr()
+    local ctx = env.engine.context
+    if tab_state.pending then
+        if repr == "Tab" then
+            -- Inside the picker Tab confirms the highlighted sense: commit
+            -- whatever gloss the candidate window currently shows.  Only a
+            -- real gloss candidate qualifies -- if the refreshed menu did
+            -- not render, this must not commit a Chinese candidate.
+            local cand = ctx:get_selected_candidate()
+            local gloss = (cand and cand["type"] == "gloss") and cand["text"] or ""
+            if gloss ~= "" then
+                env.engine:commit_text(gloss)
+                ctx:clear()
+                log_debug("tab menu commit: " .. gloss)
+            else
+                log_debug("tab menu confirm: no gloss candidate selected (type="
+                    .. tostring(cand and cand["type"] or "nil") .. ")")
+                ctx:refresh_non_confirmed_composition()
+                clear_tab_state()
+            end
+            return 1
+        end
+        if repr:sub(1, 8) == "Release+" then
+            -- Every key press arrives twice (press + release).  The release
+            -- of the very Tab that opened the picker would otherwise hit the
+            -- "any other key closes" rule and shut it instantly.  Release
+            -- events are never picker keys: let them fall through untouched.
+            return 2
+        end
+        return menu_key(repr, ctx)
+    end
+    if repr ~= "Tab" then
+        return 2
+    end
+    log_debug("tab_commit: Tab seen")
+    if not ctx:is_composing() then
+        log_debug("tab_commit: not composing")
+        return 2
+    end
+    local cand = ctx:get_selected_candidate()
+    local text = cand and cand["text"] or ""
+    if text == "" or not is_chinese(text) then
+        log_debug("tab_commit: no Chinese candidate (text=" .. tostring(text) .. ")")
+        return 2
+    end
+    local en = gloss_for(text)
+    if not en or en == "" then
+        log_debug("tab_commit: no gloss for " .. text)
+        return 2
+    end
+    local glosses = split_glosses(en)
+    if #glosses == 0 then
+        return 2
+    end
+    if #glosses == 1 then
+        env.engine:commit_text(glosses[1])
+        ctx:clear()
+        log_debug("tab commit: " .. text .. " -> " .. glosses[1])
+        return 1
+    end
+    -- Several senses: open the picker instead of committing the first one.
+    tab_state.pending = glosses
+    tab_state.word = text
+    ctx:refresh_non_confirmed_composition()
+    log_debug("tab menu open: " .. text .. " -> " .. #glosses .. " senses")
+    return 1
+end
+
+-- Closing the picker whenever a selection happens anywhere: a digit or space
+-- on a gloss candidate, or a normal Chinese candidate chosen outside the menu.
+function tab_commit.init(env)
+    env.tab_select_conn = env.engine.context.select_notifier:connect(function(_ctx)
+        if tab_state.pending then
+            clear_tab_state()
+            log_debug("tab menu closed by selection")
+        end
+    end)
+end
+
+function tab_commit.fini(env)
+    if env.tab_select_conn then
+        pcall(function()
+            env.tab_select_conn:disconnect()
+        end)
+        env.tab_select_conn = nil
+    end
 end
 
 local filter = {}
@@ -582,6 +775,37 @@ local function is_pinyin_type(t)
 end
 
 function filter.func(input, env)
+    -- Sense picker: while a Tab opened the menu, the candidate window shows
+    -- only the senses of the source word; digits/space/Tab select and
+    -- confirm, any other key closes it (see tab_commit in this file).
+    if tab_state.pending and #tab_state.pending > 0 then
+        -- Brand-new candidates need segment offsets, which are easy to get
+        -- wrong on this librime-lua build; cloning a live candidate via
+        -- ShadowCandidate carries proven start/end values instead.
+        local ok, base = pcall(function()
+            for cand in input:iter() do
+                return cand
+            end
+        end)
+        if ok and base then
+            for i, g in ipairs(tab_state.pending) do
+                yield(ShadowCandidate(base, "gloss", g,
+                    "[" .. (tab_state.word or "") .. "] 释义 " .. i .. "/" .. #tab_state.pending))
+            end
+            return
+        end
+        -- No live candidate to clone (rare): fall back to segment offsets.
+        local ok2, seg = pcall(function()
+            return env.engine.context.composition:back()
+        end)
+        if ok2 and seg and seg.start_pos then
+            for i, g in ipairs(tab_state.pending) do
+                yield(Candidate("gloss", seg.start_pos, seg._end, g,
+                    "[" .. (tab_state.word or "") .. "] 释义 " .. i .. "/" .. #tab_state.pending))
+            end
+            return
+        end
+    end
     local ctx = env.engine.context
     local code = ctx.input or ""
     local head = {}
@@ -595,7 +819,7 @@ function filter.func(input, env)
     -- be switched off too: otherwise the fallback shows the first page and
     -- silently drops every later wubi candidate (a pure wubi86 schema would
     -- lose everything after candidate 30).
-    local mode_filtering = true
+    local mode_filtering = false
 
     local function flush_head()
         -- 1) decide the input mode from the candidate types we collected
@@ -633,50 +857,9 @@ function filter.func(input, env)
         mixed_short = short_mixed
         mixed = short_mixed or ((not mode) and #word_cands > 0 and has_phrase)
 
-        -- 2) keep only candidates that belong to this input mode
-        local kept = {}
-        if mixed then
-            if mixed_short then
-                local wubi_kept = 0
-                for _i, cand in ipairs(head) do
-                    local t = cand["type"] or ""
-                    if not DROP_TYPES[t] and is_wubi_type(t) then
-                        if wubi_kept < 3 then
-                            kept[#kept + 1] = cand
-                            wubi_kept = wubi_kept + 1
-                        end
-                    end
-                end
-            else
-                for _i, cand in ipairs(word_cands) do
-                    kept[#kept + 1] = cand
-                end
-            end
-            for _i, cand in ipairs(head) do
-                if is_pinyin_type(cand["type"] or "") then
-                    kept[#kept + 1] = cand
-                end
-            end
-        else
-            for _i, cand in ipairs(head) do
-                local t = cand["type"] or ""
-                if not DROP_TYPES[t] then
-                    if mode then
-                        if is_wubi_type(t) then
-                            kept[#kept + 1] = cand
-                        end
-                    else
-                        if is_pinyin_type(t) then
-                            kept[#kept + 1] = cand
-                        end
-                    end
-                end
-            end
-        end
-        if #kept == 0 then
-            kept = head        -- never leave the menu empty
-            mode_filtering = false
-        end
+        -- 2) [luna patch] keep every candidate as-is; no wubi/pinyin split
+        local kept = head
+        mode_filtering = false
 
         -- 3) English glosses for the candidates we keep
         if #code >= MIN_CODE_LEN then
@@ -724,7 +907,7 @@ function filter.func(input, env)
         for _i, cand in ipairs(kept) do
             local en = lookup(cand["text"])
             if en and en ~= "" then
-                yield(with_comment(cand, en, code))
+                yield(with_comment(cand, en))
             else
                 yield(cand)
             end
@@ -785,4 +968,4 @@ function filter.fini(_env)
     -- nothing to clean up
 end
 
-return { filter = filter }
+return { filter = filter, tab_commit = tab_commit }
