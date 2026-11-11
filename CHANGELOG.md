@@ -2,6 +2,23 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+- **Tab 上屏英文释义**：高亮候选按 Tab 直接把英文打进文档。单条释义直接上屏；
+  多条释义按 `;`/`,` 拆分、去重后进入二次选择菜单（数字/空格/Tab 确认，
+  方向键与翻页移动，字母/Esc/退格退出）。
+  需要同时挂载 `lua_processor@*input_text*tab_commit`——**整表替换**
+  `engine/processors`（`@before` 配列表值会编译成嵌套列表，librime 会静默跳过），
+  见 `schema/add_filter.patch.yaml`。
+
+### 变更
+
+- **候选注释只显示英文**：不再拼接「编码, 」前缀（如 `打 fg` 的注释由
+  `wjjg, two` 变为 `two`）。需要恢复编码前缀时，还原 `with_comment`
+  里的 `orig .. ", " .. extra` 拼接即可。
+
 ## [1.5.2] - 2026-10-29
 
 ### 修复

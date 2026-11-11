@@ -1,64 +1,26 @@
-# Add the English-comment filter to a Rime schema.
+# 挂载示例：把本文件内容存成 <方案名>.custom.yaml（如 luna_pinyin.custom.yaml），
+# 放进 Rime 用户目录后重新部署。
 #
-# Two ways to use this file.
-#
-# ---------------------------------------------------------------------------
-# A. Patch file (recommended, keeps the upstream schema untouched)
-# ---------------------------------------------------------------------------
-# Save the content below as  <Rime user dir>\<schema>.custom.yaml
-# e.g. for the "五笔·拼音" schema:  wubi_pinyin.custom.yaml
-#
-#   patch:
-#     "engine/filters/+":
-#       - lua_filter@*input_text*filter
-#
-# Then redeploy (WeaselDeployer.exe /deploy, or "Deploy" from the tray menu).
-#
-# ---------------------------------------------------------------------------
-# B. Edit the schema directly
-# ---------------------------------------------------------------------------
-# Add one line to the schema's engine/filters list:
-#
-#   engine:
-#     ...
-#     filters:
-#       - lua_filter@*input_text*filter     <-- add this
-#
-# A minimal working example of the engine section, taken from a Wubi schema:
-#
-#   engine:
-#     processors:
-#       - ascii_composer
-#       - recognizer
-#       - key_binder
-#       - speller
-#       - punctuator
-#       - selector
-#       - navigator
-#       - express_editor
-#     segmentors:
-#       - ascii_segmentor
-#       - matcher
-#       - abc_segmentor
-#       - punct_segmentor
-#       - fallback_segmentor
-#     translators:
-#       - punct_translator
-#       - reverse_lookup_translator
-#       - table_translator
-#     filters:
-#       - lua_filter@*input_text*filter      # <-- rime-en-gloss
-#
-# Notes
-# -----
-# * Only a *filter* is added. Do NOT add a lua_processor: processors see every
-#   key event and a slow one makes the candidate list stop responding.
-# * librime-lua must be available. The Windows Weasel build ships it; on Linux
-#   install librime-lua (or librime >= 1.7 with the lua plugin) and make sure
-#   the "lua" components are enabled.
-# * The plugin file must be named input_text.lua because the filter is
-#   referenced as lua_filter@*input_text*filter.
-
+# 说明：
+# - filters 用 `+` 追加即可；
+# - processors 必须整表替换——`@before` 配列表值会编译成嵌套列表
+#   （如 - ["lua_processor@..."]），librime 会静默跳过该组件，
+#   现象是「按 Tab 没反应」（实测踩坑）。
+# - tab_commit 是「Tab 上屏英文释义」的处理器；不想要该功能时，
+#   删掉 processors 段只保留 filters 即可（注释显示不受影响）。
+# - 下面的 processors 链是 librime 各方案的默认顺序（ascii_composer …
+#   express_editor），仅把 tab_commit 插在最前；若你的方案自定义过
+#   processors，请以你的方案为准。
 patch:
   "engine/filters/+":
     - lua_filter@*input_text*filter
+  "engine/processors":
+    - lua_processor@*input_text*tab_commit
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
