@@ -187,6 +187,18 @@ python build_cache.py --cedict data/cedict.json \
 
 `--dict-dir` 指向装有 `wubi86.dict.yaml` / `pinyin_simp.dict.yaml` 的目录：脚本会读取其中的**真实词频权重**来排序，让高频词排在文件前面、更快可用。缺失也不影响正确性。
 
+### 注释里始终显示五笔码
+
+默认情况下，拼音输入时注释前缀是你敲的拼音，五笔输入时才是五笔码。若希望**两种方式都显示五笔码**（如拼音 `xuesheng` → `学生  iptg, student`），生成一张「词 → 五笔码」映射表放进词表目录即可：
+
+```bash
+python tools/build_wubi_code.py --dict-dir "%APPDATA%/Rime" \
+    --filter-cache "%APPDATA%/Rime/rime_argos/cache.txt" \
+    --out "%APPDATA%/Rime/rime_argos/wubi_code.txt"
+```
+
+脚本从五笔词库取最高权重的编码，只保留有英文翻译的词，按词频排序、与 `cache.txt` 一样增量加载（不卡输入法）。文件不存在时自动回退到原行为，不会报错。
+
 ### 五笔码被当成拼音（`yaa` → 鸭啊）
 
 `lua/input_text.lua` 会把输入分成「五笔」和「拼音」两种模式。问题是有些**合法五笔码也能完整切成拼音音节**（`yaa` = 试 = `ya`+`a`；`eee` = 月 = `e`+`e`+`e`），如果只看“能不能切分”就会把五笔候选丢掉。

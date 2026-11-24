@@ -62,6 +62,7 @@ if not MAILBOX or MAILBOX == "" then
     MAILBOX = base .. "/rime_argos"
 end
 local CACHE_FILE = MAILBOX .. "/cache.txt"
+local WUBI_FILE = MAILBOX .. "/wubi_code.txt"
 local FRESH_FILE = MAILBOX .. "/fresh.txt"
 local REQ_FILE = MAILBOX .. "/request.txt"
 local HEARTBEAT_FILE = MAILBOX .. "/heartbeat.txt"
@@ -403,6 +404,61 @@ local function lookup(text)
     return cache[text]
 end
 
+-- word -> wubi code table.  With pinyin input the candidate carries no code of
+-- its own, so we look the word up here and always show its wubi code in the
+-- comment prefix.  Loaded incrementally exactly like cache.txt: 40k lines per
+-- keystroke, at most one read per second, so the host never freezes.
+local wubi_codes = {}
+local wubi_offset = 0
+local last_wubi_read = 0
+
+local function wubi_code_for(text)
+    return wubi_codes[text]
+end
+
+local function load_wubi()
+    local now = os.time()
+    if now == last_wubi_read then
+        return false
+    end
+    last_wubi_read = now
+    local f = io.open(WUBI_FILE, "rb")
+    if not f then
+        return false
+    end
+    local sz = f:seek("end")
+    if sz < wubi_offset then
+        wubi_codes = {}
+        wubi_offset = 0
+    end
+    if sz == wubi_offset then
+        f:close()
+        return false
+    end
+    f:seek("set", wubi_offset)
+    local offset = wubi_offset
+    local parsed = 0
+    while parsed < MAX_LINES_PER_CALL do
+        local line = f:read("*l")
+        if not line then
+            break
+        end
+        local next_offset = f:seek()
+        line = line:gsub("\r$", "")
+        local word, code = line:match("^([^\t]+)\t(.+)$")
+        if word and code then
+            wubi_codes[word] = code
+            offset = next_offset
+            parsed = parsed + 1
+        else
+            break
+        end
+    end
+    wubi_offset = offset
+    f:close()
+    return parsed > 0
+end
+
 local function utf8_len(text)
     if not text then
         return 0
@@ -534,7 +590,14 @@ end
 -- input range must survive untouched (see the ShadowCandidate note in the
 -- project docs): a hand-built range would break multi-segment compositions.
 local function with_comment(cand, extra, code)
-    local orig = cand["comment"] or ""
+    -- Always show the word's wubi code in front, for both wubi and pinyin
+    -- input.  For a wubi candidate librime already puts the code in the
+    -- comment slot; for pinyin we look it up in wubi_codes (loaded lazily).
+    local text = cand["text"] or ""
+    local orig = wubi_code_for(text) or ""
+    if orig == "" then
+        orig = cand["comment"] or ""
+    end
     if orig == "" then
         orig = code or ""
     end
@@ -680,6 +743,7 @@ function filter.func(input, env)
 
         -- 3) English glosses for the candidates we keep
         if #code >= MIN_CODE_LEN then
+            load_wubi()   -- throttled to once/second; stops as soon as fully loaded
             ensure_service()
             local missing = {}
             local seen = {}
